@@ -98,13 +98,24 @@ def render_view(detail: dict[str, Any]) -> str:
 
     esc = _html.escape
     cases = detail.get("cases", [])
-    nav_items = "".join(
-        f"<div class='case-item{' active' if i == 0 else ''}' data-i='{i}' "
-        f"data-tone='{(c.get('verdict') or {}).get('tone','mid')}'>"
-        f"<span>{esc(c['model'])} × {esc(c['scene'])}</span>"
-        f"<span class='score'>{c['total'] if c['total'] is not None else '—'}</span>"
-        f"<span class='v-dot {(c.get('verdict') or {}).get('tone','mid')}'></span></div>"
-        for i, c in enumerate(cases))
+    # 左列按场景分组：组头 = 场景名 + 模型数 + 破甲/失守计数
+    groups: dict[str, list[tuple[int, dict[str, Any]]]] = {}
+    for i, c in enumerate(cases):
+        groups.setdefault(c["scene"], []).append((i, c))
+    nav_parts = []
+    for scene, items in groups.items():
+        n_bad = sum(1 for _, c in items if (c.get("verdict") or {}).get("tone") == "bad")
+        head = (f"<div class='scene-h'>{esc(scene)}<span class='scene-n'>{len(items)}模型"
+                + (f"·<b class='scene-bad'>破甲{n_bad}</b>" if n_bad else "") + "</span></div>")
+        rows = "".join(
+            f"<div class='case-item{' active' if i == 0 else ''}' data-i='{i}' "
+            f"data-tone='{(c.get('verdict') or {}).get('tone','mid')}'>"
+            f"<span>{esc(c['model'])}</span>"
+            f"<span class='score'>{c['total'] if c['total'] is not None else '—'}</span>"
+            f"<span class='v-dot {(c.get('verdict') or {}).get('tone','mid')}'></span></div>"
+            for i, c in items)
+        nav_parts.append(f"<div class='scene-grp'>{head}{rows}</div>")
+    nav_items = "".join(nav_parts)
     tone_counts = {"ok": 0, "mid": 0, "bad": 0}
     for c in cases:
         tone_counts[(c.get("verdict") or {}).get("tone", "mid")] += 1
@@ -260,6 +271,11 @@ def render_view(detail: dict[str, Any]) -> str:
 .rpl.long.expanded {{ max-height:none; }}
 .cl-only {{ float:right; font-size:9px; font-weight:normal; color:rgba(251,253,253,.55); cursor:pointer; }}
 .cl-only input {{ vertical-align:middle; margin-right:2px; }}
+.scene-grp {{ margin-bottom:10px; }}
+.scene-h {{ font-size:10px; color:var(--steel); letter-spacing:1px; padding:4px 0 4px 8px; border-bottom:1px dashed rgba(186,194,247,.35); margin-bottom:4px; }}
+.scene-n {{ float:right; color:rgba(251,253,253,.45); font-size:9px; }}
+.scene-bad {{ color:var(--sakura); }}
+.case-item {{ padding-left:14px; }}
 </style></head>
 <body>{render_nav("/evidence")}<div class="case">
   <div>
@@ -282,6 +298,11 @@ function applyFilter(f){{
     const show = (f==='all') || el.dataset.tone===f;
     el.style.display = show?'':'none';
     if(show && firstVisible===null) firstVisible=el.dataset.i;
+  }});
+  // 组内无可见 case 时连组头一起隐藏
+  document.querySelectorAll('.scene-grp').forEach(g=>{{
+    const any=[...g.querySelectorAll('.case-item')].some(el=>el.style.display!=='none');
+    g.style.display = any?'':'none';
   }});
   document.querySelectorAll('.pane').forEach(p=>p.style.display='none');
   if(firstVisible!==null){{

@@ -173,6 +173,32 @@ def test_view_checklist_only_problem_toggle(client):
     assert "cl-toggle" in html
 
 
+def test_view_scene_grouping(client, tmp_path):
+    """左列按场景分组：组头含场景名+模型数；有 bad 结论时组头标破甲计数。"""
+    run = tmp_path / "runs" / "r-grp"
+    run.mkdir(parents=True)
+    dlg = [
+        {"scene": "场景甲", "model": "m1", "turns": [{"turn_no": 1, "user": "u", "model_reply": "r", "judge": {}, "meta": {}}]},
+        {"scene": "场景甲", "model": "m2", "turns": [{"turn_no": 1, "user": "u", "model_reply": "r", "judge": {}, "meta": {}}]},
+        {"scene": "场景乙", "model": "m1", "turns": [{"turn_no": 1, "user": "u", "model_reply": "r", "judge": {}, "meta": {}}]},
+    ]
+    score = {"cases": [
+        {"scene": "场景甲", "model": "m1", "total": 5, "verdict": {"tone": "bad", "headline": "破甲于L3", "tested": "t", "proves": "p"}},
+        {"scene": "场景甲", "model": "m2", "total": 8, "verdict": {"tone": "ok", "headline": "守住", "tested": "t", "proves": "p"}},
+        {"scene": "场景乙", "model": "m1", "total": 9, "verdict": {"tone": "ok", "headline": "守住", "tested": "t", "proves": "p"}},
+    ]}
+    (run / "dialogue.jsonl").write_text("\n".join(json.dumps(c, ensure_ascii=False) for c in dlg), encoding="utf-8")
+    (run / "score.json").write_text(json.dumps(score, ensure_ascii=False), encoding="utf-8")
+    html = client.get("/view/r-grp").text
+    assert "scene-grp" in html
+    assert "场景甲" in html and "场景乙" in html          # 组头场景名
+    assert "2模型" in html                                 # 场景甲有 2 模型
+    assert "破甲1" in html                                 # 场景甲含 1 个 bad 结论
+    assert "scene-h" in html and "scene-bad" in html
+    # 模型行不再重复场景名（分组后行内只有模型）
+    assert "m1 × 场景甲" not in html
+
+
 def test_view_escapes_xss(client, tmp_path):
     run = tmp_path / "runs" / "r-xss"
     run.mkdir(parents=True)
