@@ -97,7 +97,7 @@ def radar_png(models: list[dict[str, Any]], out: Path, size_key: str) -> Path:
     ax.tick_params(colors=PAPER)
     ax.legend(loc="upper right", bbox_to_anchor=(1.25, 1.1), frameon=False,
               labelcolor=PAPER, fontsize=11)
-    fig.suptitle("六维雷达 · 0–10", color=PAPER, fontsize=16, y=0.98)
+    fig.suptitle("多维雷达 · 0–10", color=PAPER, fontsize=16, y=0.98)
     out.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(out, facecolor=INK, dpi=dpi)
     plt.close(fig)

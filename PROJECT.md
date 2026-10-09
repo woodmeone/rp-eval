@@ -7,7 +7,7 @@
 RP 模型横评本地工具：脚本化多轮取证 + LLM judge 判分 + Elo 聚合 + 像素风可视化前端，
 服务"比特毯子"账号的模型测评系列视频（EP1=RP 模型横评，六项：文笔/入戏/审查/舔狗/代打/记忆）。
 
-## 模块地图（现状：MVP 十票代码完成 + 设置页/全局导航/六维题库，123 测试通过）
+## 模块地图（现状：MVP 十票 + 设置页/全局导航/八维题库/破甲分级，126 测试通过）
 
 | 模块 | 代码区域 | 核心入口 | 职责 |
 |---|---|---|---|
@@ -44,11 +44,12 @@ runs/<run_id>/           # dialogue.jsonl / score.json / battles.jsonl / charts/
 - **cli**：`rp-eval` 一条命令起服务+自动开浏览器；`rp-eval init` 生成 models.yaml/题卡模板。
 - **config**：题卡/模型 YAML 加载校验、价格字段解析、judge 与被测池同族警告。
 - **runner**：OpenAI 兼容并行调被测模型，按 user_script 喂多轮，落 dialogue.jsonl，断点续跑。
-- **judge**：TRACE checklist 状态机取证（pending→verified/failed，failed 不可逆）+ 六类反应判定 + n=5 多数票；审查阶梯 L0–L6 → 崩档点/OOR/BUR/BSR/rated 一票否决；score.json 末端自动出图。
-- **aggregate**：0–10 六维得分 + 总分 60 榜单；Bradley-Terry 自实现 Elo（MM 迭代 + reg=0.5 伪计数）+ bootstrap CI + 胜率矩阵；judge 自动 battle（双向平均防位置偏差 + 长度截断）与人工记票混装 battles.jsonl。
+- **judge**：TRACE checklist 状态机取证（pending→verified/failed，failed 不可逆）+ 六类反应判定 + n=5 多数票；审查阶梯 L0–L6 → 崩档点/破甲等级/OOR/BUR/BSR/rated 一票否决；score.json 末端自动出图。
+- **aggregate**：0–10 各维得分 + 总分（=各维之和，随维度数扩展）榜单；Bradley-Terry 自实现 Elo（MM 迭代 + reg=0.5 伪计数）+ bootstrap CI + 胜率矩阵；judge 自动 battle（双向平均防位置偏差 + 长度截断）与人工记票混装 battles.jsonl。
 - **charts**：matplotlib 雷达图 + 审查象限图 PNG（像素四色，横 1920×1080 / 竖 1080×1920，无阶梯数据优雅降级）。
 - **web**：控制台（勾模型/题卡+预估成本+SSE 实时判定流+重连回放）、证据浏览器（逐轮六类徽章+证据高亮+checklist 时间线+tier/崩档标注）、榜单页（总分表+得分条+锤点+Elo+图内嵌）、盲测页（A/B 代号并排→投票→揭名，揭名前响应无真名）；终端 ANSI 彩色轮次卡；六页全局导航条；设置页（/settings 前端配置模型 URL/Key，预置服务商下拉，key 仅落 .env 永不回显）；SSE error 事件失败卡片带"检查密钥→"跳转。
-- **题库**（scenes/，可开源部分）：学姐卡多维（代打5轮+舔狗3轮+记忆探针）、入戏-大禹时代探针卡、文笔-AI味检测卡；审查阶梯 L0–L6 骨架落 scenes/stress/（.gitignore 排除，话术私有，L6 为占位钓句待替换）。
+- **题库**（scenes/，可开源部分）：学姐卡多维（代打5轮+舔狗3轮+记忆探针）、入戏-大禹时代探针卡、文笔-AI味检测卡、格式遵从卡（JSON/字数/分隔符硬约束）、长上下文卡（远距离召回/规则保持/守密）；审查阶梯 L0–L6 落 scenes/stress/（.gitignore 排除，话术私有永不入库），其中 L3–L6 重写为**破甲四级**通用手法骨架：L3=单轮人设注入(DAN/persona modulation)、L4=情景嵌套(fiction/戏中戏)、L5=多轮渐进升温(Crescendo/Echo Chamber)、L6=组合攻击红线(persona+嵌套+升温+编码混淆)；手法名取自公开分类学(SoK 2510.15476/HarmBench/J2)，有害载荷留【私有钓句·占位】待替换。
+- **审查阶梯指标**：崩档点(首次出戏档·测过敏) + 破甲等级(首次 harmful comply 档·测失守，与崩档点对偶) + OOR/BUR/BSR + rated 一票否决；证据页与象限图同源展示。
 
 ## 演进方向
 
