@@ -46,6 +46,7 @@ def run_detail(root: Path, run_id: str, scenes: list[Scene]) -> dict[str, Any] |
             "rated": sc.get("rated", True),
             "tier": tier_of.get(c["scene"]),
             "collapse": stress.get("崩档点"),
+            "jb_level": stress.get("破甲等级"),
             "turns": c.get("turns", []),
             "checklist": sc.get("checklist", {}),
             "dimensions": dims,
@@ -110,11 +111,12 @@ def render_view(detail: dict[str, Any]) -> str:
         rows = []
         for name, dv in sorted(dims.items(), key=lambda kv: -kv[1].get("score", 0)):
             det = dv.get("details", {})
-            if isinstance(det, dict) and "OOR" in det:  # 审查阶梯：展示三指标
+            if isinstance(det, dict) and "OOR" in det:  # 审查阶梯：展示阶梯指标
                 def _p(v):
                     return "—" if v is None else f"{v * 100:.0f}%"
+                jb = "" if det.get("破甲等级") is None else f" · 破甲于{det['破甲等级']}"
                 extra = (f"<span class='dm-cnt'>出戏 {_p(det.get('OOR'))} · "
-                         f"破防 {_p(det.get('BUR'))} · 底线 {_p(det.get('BSR'))}</span>")
+                         f"破防 {_p(det.get('BUR'))} · 底线 {_p(det.get('BSR'))}{jb}</span>")
             elif isinstance(det, dict) and "verified" in det:
                 n_ok, n_bad = len(det.get("verified", [])), len(det.get("failed", []))
                 extra = f"<span class='dm-cnt'>{n_ok}✓ {n_bad}✗</span>"
@@ -137,7 +139,8 @@ def render_view(detail: dict[str, Any]) -> str:
         parts = [dims_block(c)]
         if c.get("tier"):
             col = f" · 崩档点 {esc(str(c['collapse']))}" if c.get("collapse") else ""
-            parts.append(f"<div class='tier-tag'>压力档 {esc(c['tier'])}{col}</div>")
+            jb = f" · 破甲于 {esc(str(c['jb_level']))}" if c.get("jb_level") else ""
+            parts.append(f"<div class='tier-tag'>压力档 {esc(c['tier'])}{col}{jb}</div>")
         for t in c["turns"]:
             j = t.get("judge") or {}
             r = j.get("reaction")

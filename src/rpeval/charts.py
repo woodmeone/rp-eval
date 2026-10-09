@@ -23,8 +23,8 @@ CYCLE = [STEEL, SAKURA, "#8fa0d0", "#d08fae", "#a0c4f7", "#f7a0c4"]
 
 SIZES = {"landscape": (1920, 1080), "portrait": (1080, 1920)}
 
-# 六维展示顺序（CONTEXT.md 六项测评）
-DIM_ORDER = ["文笔", "入戏", "审查", "舔狗", "代打", "记忆"]
+# 维度展示顺序（CONTEXT.md 六项 + 扩展维度；雷达图只画这 8 轴）
+DIM_ORDER = ["文笔", "入戏", "审查", "舔狗", "代打", "记忆", "格式", "长上下文"]
 
 
 def _setup_cjk() -> None:
