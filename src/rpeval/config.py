@@ -40,10 +40,80 @@ class Card:
 
 
 @dataclass
+class LongDoc:
+    """长文注入（NIAH 式大海捞针）：filler 重复 repeat 节，needle 插在 depth 深度处。"""
+
+    filler: str
+    repeat: int
+    needle: str
+    depth: float = 0.5
+
+
+@dataclass
+class Check:
+    """程序化校验（格式类确定性判分，不走 LLM）：
+    kind ∈ regex/json/html/len；turn=目标轮次；
+    regex 模式 mode ∈ match/not/count（count 配 n）；len 配 n（汉字数）。"""
+
+    kind: str
+    turn: int
+    mode: str = "match"
+    n: int = 0
+    pattern: str = ""
+
+
+def parse_check(spec: str, path: Path, where: str) -> Check:
+    """校验 check 语法：json@2 / html@3 / len@2:15 / regex@1:count=3:pat / regex@2:not:pat / regex@1:match:pat。"""
+    import re
+
+    parts = spec.split("@", 1)
+    if len(parts) != 2:
+        raise ConfigError(f"{path.name}: {where} check 语法错（缺 @轮次）：{spec!r}")
+    kind, rest = parts[0], parts[1]
+    if kind not in ("regex", "json", "html", "len"):
+        raise ConfigError(f"{path.name}: {where} check 类型未知 '{kind}'（可用 regex/json/html/len）")
+    seg = rest.split(":", 1)
+    try:
+        turn = int(seg[0])
+    except ValueError:
+        raise ConfigError(f"{path.name}: {where} check 轮次不是整数：{rest!r}") from None
+    if turn < 1:
+        raise ConfigError(f"{path.name}: {where} check 轮次须 ≥1：{turn}")
+    if kind in ("json", "html"):
+        return Check(kind=kind, turn=turn)
+    if len(seg) < 2:
+        raise ConfigError(f"{path.name}: {where} check {kind} 缺参数：{spec!r}")
+    tail = seg[1]
+    if kind == "len":
+        try:
+            return Check(kind="len", turn=turn, n=int(tail))
+        except ValueError:
+            raise ConfigError(f"{path.name}: {where} check len 字数不是整数：{tail!r}") from None
+    # regex：mode[:pattern]
+    if tail.startswith("count="):
+        head, _, pat = tail.partition(":")
+        try:
+            n = int(head.split("=", 1)[1])
+        except ValueError:
+            raise ConfigError(f"{path.name}: {where} check count 数不是整数：{head!r}") from None
+    elif tail.startswith("not:") or tail.startswith("match:"):
+        n, pat = 0, tail.split(":", 1)[1]
+    else:
+        raise ConfigError(f"{path.name}: {where} check regex 模式须为 match:/not:/count=N：{spec!r}")
+    try:
+        re.compile(pat)
+    except re.error as e:
+        raise ConfigError(f"{path.name}: {where} check 正则无法编译：{pat!r} — {e}") from e
+    mode = "count" if tail.startswith("count=") else ("not" if tail.startswith("not:") else "match")
+    return Check(kind="regex", turn=turn, mode=mode, n=n, pattern=pat)
+
+
+@dataclass
 class Turn:
     turn: int
     text: str
     probe_for: list[str] = field(default_factory=list)
+    long_doc: LongDoc | None = None
 
 
 @dataclass
@@ -52,6 +122,7 @@ class ChecklistItem:
     text: str
     dimension: str
     weight: int
+    check: Check | None = None
 
 
 @dataclass
@@ -128,19 +199,38 @@ def load_scene(path: Path) -> Scene:
         turn_no = int(_require(t, "turn", f"user_script[{i}]", p))
         text = str(_require(t, "text", f"user_script[{i}]", p))
         probe = list(t.get("probe_for") or [])
-        turns.append(Turn(turn=turn_no, text=text, probe_for=probe))
+        ld_raw = t.get("long_doc")
+        long_doc = None
+        if ld_raw is not None:
+            ld_where = f"user_script[{i}](turn {turn_no}).long_doc"
+            ld = {
+                "filler": str(_require(ld_raw, "filler", ld_where, p)),
+                "repeat": int(_require(ld_raw, "repeat", ld_where, p)),
+                "needle": str(_require(ld_raw, "needle", ld_where, p)),
+            }
+            if ld["repeat"] < 1:
+                raise ConfigError(f"{p.name}: {ld_where} repeat 须 ≥1")
+            if ld_raw.get("depth") is not None:
+                ld["depth"] = float(ld_raw["depth"])
+            if not 0.0 <= ld.get("depth", 0.5) <= 1.0:
+                raise ConfigError(f"{p.name}: {ld_where} depth 须在 0-1")
+            long_doc = LongDoc(**ld)
+        turns.append(Turn(turn=turn_no, text=text, probe_for=probe, long_doc=long_doc))
     cl_raw = _require(raw, "checklist", f"题卡 {sid}", p)
     if not isinstance(cl_raw, list) or not cl_raw:
         raise ConfigError(f"{p.name}: checklist 必须是非空列表")
     items: list[ChecklistItem] = []
     for i, c in enumerate(cl_raw):
         cid = str(_require(c, "id", f"checklist[{i}]", p))
+        where = f"checklist[{i}]({cid})"
+        spec = c.get("check")
         items.append(
             ChecklistItem(
                 id=cid,
-                text=str(_require(c, "text", f"checklist[{i}]({cid})", p)),
-                dimension=str(_require(c, "dimension", f"checklist[{i}]({cid})", p)),
-                weight=int(_require(c, "weight", f"checklist[{i}]({cid})", p)),
+                text=str(_require(c, "text", where, p)),
+                dimension=str(_require(c, "dimension", where, p)),
+                weight=int(_require(c, "weight", where, p)),
+                check=parse_check(str(spec), p, where) if spec is not None else None,
             )
         )
     return Scene(id=sid, card=card, user_script=turns, checklist=items, tier=raw.get("tier"))

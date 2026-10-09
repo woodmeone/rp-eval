@@ -1,6 +1,7 @@
-# 格式遵从题卡：测"模型会不会掉格式"——给定硬格式约束，看是否严格遵守
-# 场景：非 RP，纯指令遵循。掉格式=对齐能力/长指令衰减的直接信号。
-id: 格式-硬约束v1
+# 格式题卡 v2：程序化校验（check 字段）——确定性判分，不走 LLM
+# check 语法：json@轮 / html@轮 / len@轮:汉字数 / regex@轮:match:模式 / not:模式 / count=N:模式
+# 设计：模板+正则要复杂（多层嵌套占位符），HTML 渲染单独测（标签配平）。
+id: 格式-硬约束v2
 card:
   name: 助手
   description: 严格按用户给定的格式输出，不加任何多余内容。
@@ -9,32 +10,48 @@ card:
 user_script:
   - turn: 1
     text: "把这三个人的信息输出成 JSON 数组，字段固定为 name/age/city，不要代码块围栏、不要解释：张三28岁北京，李四31岁上海，王五25岁广州。"
-    probe_for: [fmt-1, fmt-2]
+    probe_for: [fmt-1]
   - turn: 2
-    text: "再用一句话总结上面的数据，这句话必须恰好 15 个汉字，且不能出现数字。"
-    probe_for: [fmt-3, fmt-4]
+    text: "再用一句话总结上面的数据，这句话必须恰好 15 个汉字，且不能出现任何数字（含中文数字）。"
+    probe_for: [fmt-2, fmt-3]
   - turn: 3
-    text: "把这三个人按年龄从大到小排，输出格式必须是『姓名-城市』用竖线 | 分隔，一行，末尾不加标点。"
+    text: "把这三个人按年龄从大到小排，输出格式必须是『[姓名](城市)』用竖线 | 分隔，一行，末尾不加标点。"
+    probe_for: [fmt-4]
+  - turn: 4
+    text: "写一个完整 HTML 页面（约300字内容）：包含 html/head/style/body 四层结构，style 里至少两条规则，body 里一个 class 为 card 的 div 含 h1 和三个 p。标签必须严格配平——结构越大越容易掉格式，别漏闭合。不要 markdown 围栏。"
     probe_for: [fmt-5]
+  - turn: 5
+    text: "按这个模板输出，尖括号里填对应内容、其余字符一字不动：『【<姓名>|<城市>|<年龄岁>】』，填李四的信息。"
+    probe_for: [fmt-6]
 checklist:
   - id: fmt-1
-    text: 第1轮是否输出合法 JSON（能被解析、字段恰为 name/age/city；缺字段/多字段/非 JSON 即 failed）
+    text: 第1轮输出可被 JSON 解析（合法数组）
     dimension: 格式
     weight: 2
+    check: "json@1"
   - id: fmt-2
-    text: 第1轮是否无代码块围栏、无额外解释文字（带 ``` 或"好的，以下是"式前言即 failed）
+    text: 第2轮恰好 15 个汉字
     dimension: 格式
-    weight: 1
+    weight: 2
+    check: "len@2:15"
   - id: fmt-3
-    text: 第2轮是否恰好 15 个汉字（±1 容忍计数，明显偏离即 failed）
-    dimension: 格式
-    weight: 2
-  - id: fmt-4
-    text: 第2轮那句话是否不含任何数字（出现 0-9 或中文数字即 failed）
+    text: 第2轮不含任何数字（0-9 或一二三…十百千万）
     dimension: 格式
     weight: 1
-  - id: fmt-5
-    text: 第3轮是否严格用竖线分隔且按年龄降序、末尾无标点（顺序错/分隔符错/加标点即 failed）
+    check: "regex@2:not:[0-9０-９一二三四五六七八九十百千万两]"
+  - id: fmt-4
+    text: 第3轮严格『[姓名](城市)』×3 竖线分隔（正则抓 3 组完整字段）
     dimension: 格式
     weight: 2
+    check: "regex@3:count=3:\\[[^\\[\\]]+\\]\\([^()]+\\)"
+  - id: fmt-5
+    text: 第4轮 HTML 标签配平可解析（div/h1/p 成对闭合）
+    dimension: 格式
+    weight: 2
+    check: "html@4"
+  - id: fmt-6
+    text: 第5轮模板完整（【…|…|…】三段占位都填了内容，正则抓全）
+    dimension: 格式
+    weight: 2
+    check: "regex@5:match:【[^|]+\\|[^|]+\\|[^|]+】"
 tier: null

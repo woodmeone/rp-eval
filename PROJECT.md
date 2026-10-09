@@ -7,7 +7,7 @@
 RP 模型横评本地工具：脚本化多轮取证 + LLM judge 判分 + Elo 聚合 + 像素风可视化前端，
 服务"比特毯子"账号的模型测评系列视频（EP1=RP 模型横评，六项：文笔/入戏/审查/舔狗/代打/记忆）。
 
-## 模块地图（现状：MVP 十票 + 设置页/全局导航/八维题库/破甲分级，126 测试通过）
+## 模块地图（现状：MVP 十票 + 设置页/全局导航/八维题库/破甲分级/程序化校验/NIAH长文注入，139 测试通过）
 
 | 模块 | 代码区域 | 核心入口 | 职责 |
 |---|---|---|---|
@@ -42,9 +42,9 @@ runs/<run_id>/           # dialogue.jsonl / score.json / battles.jsonl / charts/
 ## 当前功能清单（MVP 十票完成）
 
 - **cli**：`rp-eval` 一条命令起服务+自动开浏览器；`rp-eval init` 生成 models.yaml/题卡模板。
-- **config**：题卡/模型 YAML 加载校验、价格字段解析、judge 与被测池同族警告。
-- **runner**：OpenAI 兼容并行调被测模型，按 user_script 喂多轮，落 dialogue.jsonl，断点续跑。
-- **judge**：TRACE checklist 状态机取证（pending→verified/failed，failed 不可逆）+ 六类反应判定 + n=5 多数票；审查阶梯 L0–L6 → 崩档点/破甲等级/OOR/BUR/BSR/rated 一票否决；score.json 末端自动出图。
+- **config**：题卡/模型 YAML 加载校验、价格字段解析、judge 与被测池同族警告、check 语法解析、long_doc 解析。
+- **runner**：OpenAI 兼容并行调被测模型，按 user_script 喂多轮，落 dialogue.jsonl，断点续跑；**long_doc 长文注入**（filler×repeat + needle 按 depth 插入，NIAH 大海捞针）。
+- **judge**：TRACE checklist 状态机取证（pending→verified/failed，failed 不可逆）+ 六类反应判定 + n=5 多数票；**程序化校验 run_checks**（check 字段：json@N/html@N/len@N:n/regex@N:match|not|count，确定性判分不走 LLM，语义类仍禁正则）；审查阶梯 L0–L6 → 崩档点/破甲等级/OOR/BUR/BSR/rated 一票否决；score.json 末端自动出图。
 - **aggregate**：0–10 各维得分 + 总分（=各维之和，随维度数扩展）榜单；Bradley-Terry 自实现 Elo（MM 迭代 + reg=0.5 伪计数）+ bootstrap CI + 胜率矩阵；judge 自动 battle（双向平均防位置偏差 + 长度截断）与人工记票混装 battles.jsonl。
 - **charts**：matplotlib 雷达图 + 审查象限图 PNG（像素四色，横 1920×1080 / 竖 1080×1920，无阶梯数据优雅降级）。
 - **web**：控制台（勾模型/题卡+预估成本+SSE 实时判定流+重连回放）、证据浏览器（逐轮六类徽章+证据高亮+checklist 时间线+tier/崩档标注）、榜单页（总分表+得分条+锤点+Elo+图内嵌）、盲测页（A/B 代号并排→投票→揭名，揭名前响应无真名）；终端 ANSI 彩色轮次卡；六页全局导航条；设置页（/settings 前端配置模型 URL/Key，预置服务商下拉，key 仅落 .env 永不回显）；SSE error 事件失败卡片带"检查密钥→"跳转。
@@ -54,4 +54,5 @@ runs/<run_id>/           # dialogue.jsonl / score.json / battles.jsonl / charts/
 ## 演进方向
 
 - MVP 十票（.scratch/rp-eval-mvp/issues/）走 tracer-bullet：先端到端薄片，再逐层加厚；
-- EP1 之后：长线退化马拉松专题、观众实时投票（若做）、框架开源发布。
+- EP1 之后：长线退化马拉松专题、观众实时投票（若做）、框架开源发布；
+- **备忘（待用户提供）**：复杂角色卡（不正经/道德灰度向）由用户收集后提供，兼作破甲探针与入戏基准；stress L3–L6 的【私有钓句·占位】待替换为私有话术。

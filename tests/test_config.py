@@ -134,6 +134,67 @@ def test_load_scenes_includes_subdirectories(tmp_path: Path):
     assert by_id["审查-L0"].tier == "L0"
 
 
+SCENE_CHECK = """\
+id: 格式-校验v1
+card:
+  name: 助手
+  description: 按格式输出
+  scenario: 整理
+  first_mes: 好
+user_script:
+  - turn: 1
+    text: "输出JSON"
+  - turn: 2
+    text: "长文档"
+    long_doc:
+      filler: "例会纪要若干。"
+      repeat: 10
+      needle: "团建密码是 蓝鲸7749。"
+      depth: 0.5
+checklist:
+  - id: c1
+    text: JSON可解析
+    dimension: 格式
+    weight: 2
+    check: "json@1"
+  - id: c2
+    text: 召回针
+    dimension: 长上下文
+    weight: 2
+    check: "regex@2:match:7749"
+tier: null
+"""
+
+
+def test_load_scene_parses_check_and_long_doc(tmp_path: Path):
+    d = tmp_path / "scenes"
+    d.mkdir()
+    p = _write(d, "f.yaml", SCENE_CHECK)
+    from rpeval.config import load_scene
+    s = load_scene(p)
+    assert s.checklist[0].check.kind == "json" and s.checklist[0].check.turn == 1
+    assert s.checklist[1].check.kind == "regex" and s.checklist[1].check.mode == "match"
+    ld = s.user_script[1].long_doc
+    assert ld is not None and ld.repeat == 10 and ld.depth == 0.5
+    assert s.user_script[0].long_doc is None
+
+
+@pytest.mark.parametrize("spec,field", [
+    ("json", "缺 @轮次"),
+    ("xml@1", "类型未知"),
+    ("json@x", "轮次"),
+    ("len@1", "缺参数"),
+    ("len@1:abc", "字数"),
+    ("regex@1:bad:pat", "模式须为"),
+    ("regex@1:match:[unclosed", "无法编译"),
+])
+def test_parse_check_errors(tmp_path, spec, field):
+    from rpeval.config import parse_check
+    with pytest.raises(ConfigError) as e:
+        parse_check(spec, Path("x.yaml"), "checklist[0](c1)")
+    assert field in str(e.value)
+
+
 def test_family_warnings_triggers_on_same_prefix():
     from rpeval.config import ModelCfg
 

@@ -1,6 +1,7 @@
 """judge：TRACE checklist 取证状态机 + n 采样多数票 + score.json 聚合（ADR-0004）。
 
-判定必须 LLM 判实质，禁用正则（关键约束）。
+语义类判定必须 LLM 判实质，禁用正则（关键约束）；
+格式类确定性判定（JSON/HTML/字数/模板抓取）走程序化校验 run_checks，不走 LLM。
 """
 from __future__ import annotations
 
@@ -153,6 +154,94 @@ def majority_vote(verdicts: list[str]) -> str | None:
     return top[0][0]
 
 
+def _turn_reply(case: dict[str, Any], turn_no: int) -> str | None:
+    for t in case["turns"]:
+        if t["turn_no"] == turn_no:
+            return str(t.get("model_reply", ""))
+    return None
+
+
+def run_checks(scene: Scene, case: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    """程序化校验（格式类确定性判分，不走 LLM）。
+
+    返回 {item_id: {"state", "evidence_turn", "evidence_quote"}}；
+    无 check 的条目不在结果里（仍走 LLM 判）。
+    - json@N：第 N 轮回复能被 json.loads（允许 ``` 围栏，取围栏内）→ verified
+    - html@N：第 N 轮回复标签配平可解析 → verified
+    - len@N:n：第 N 轮回复汉字数 == n → verified
+    - regex@N:match:pat：第 N 轮含 pat；not:pat：不含；count=n:pat：findall==n
+    """
+    import json as _json
+    import re
+    from html.parser import HTMLParser
+
+    class _Bal(HTMLParser):
+        VOID = {"br", "hr", "img", "input", "meta", "link", "area", "base",
+                "col", "embed", "source", "track", "wbr"}
+
+        def __init__(self):
+            super().__init__()
+            self.stack: list[str] = []
+            self.bad = False
+
+        def handle_starttag(self, tag, attrs):
+            if tag not in self.VOID:
+                self.stack.append(tag)
+
+        def handle_endtag(self, tag):
+            if tag in self.VOID:
+                return
+            if self.stack and self.stack[-1] == tag:
+                self.stack.pop()
+            elif tag in self.stack:
+                self.bad = True  # 交叉嵌套
+            else:
+                self.bad = True  # 多余闭合
+
+    results: dict[str, dict[str, Any]] = {}
+    for item in scene.checklist:
+        ck = item.check
+        if ck is None:
+            continue
+        reply = _turn_reply(case, ck.turn)
+        if reply is None:
+            results[item.id] = {"state": "pending", "evidence_turn": ck.turn,
+                                "evidence_quote": f"第{ck.turn}轮不存在"}
+            continue
+        state, quote = "failed", reply[:120]
+        if ck.kind == "json":
+            frag = re.search(r"```(?:json)?\s*([\s\S]*?)```", reply)
+            txt = frag.group(1).strip() if frag else reply.strip()
+            try:
+                _json.loads(txt)
+                state = "verified"
+            except (ValueError, TypeError):
+                pass
+        elif ck.kind == "html":
+            p = _Bal()
+            try:
+                p.feed(reply)
+                p.close()
+                state = "verified" if (not p.bad and not p.stack) else "failed"
+            except Exception:
+                state = "failed"
+        elif ck.kind == "len":
+            n_han = len(re.findall(r"[\u4e00-\u9fff]", reply))
+            state = "verified" if n_han == ck.n else "failed"
+            quote = f"汉字数 {n_han}（要求 {ck.n}）：{reply[:80]}"
+        elif ck.kind == "regex":
+            hits = re.findall(ck.pattern, reply)
+            if ck.mode == "match":
+                state = "verified" if hits else "failed"
+            elif ck.mode == "not":
+                state = "verified" if not hits else "failed"
+            else:  # count
+                state = "verified" if len(hits) == ck.n else "failed"
+            quote = f"命中 {len(hits)} 处（模式 {ck.pattern[:40]}）：{reply[:80]}"
+        results[item.id] = {"state": state, "evidence_turn": ck.turn, "evidence_quote": quote}
+    return results
+
+
 async def run_state_machine(
     scene: Scene,
     case: dict[str, Any],
@@ -160,14 +249,26 @@ async def run_state_machine(
     n: int = 5,
     prior: list[dict[str, Any]] | None = None,
 ) -> list[dict[str, Any]]:
-    """逐条 checklist：pending→verified/failed；终态不可逆（含 prior 传入的历史终态）。"""
+    """逐条 checklist：pending→verified/failed；终态不可逆（含 prior 传入的历史终态）。
+
+    带 check 的条目走程序化校验（确定性，不走 LLM）；无 check 走 n 采样多数票。"""
     dialogue = build_dialogue_text(case)
     prior_map = {r["id"]: r for r in (prior or [])}
+    programmatic = run_checks(scene, case)
     results: list[dict[str, Any]] = []
     for item in scene.checklist:
         prev = prior_map.get(item.id)
         if prev and prev["state"] in ("verified", "failed"):
             results.append(dict(prev))  # 终态不可逆，直接沿用
+            continue
+        if item.id in programmatic:
+            pr = programmatic[item.id]
+            results.append({
+                "id": item.id, "text": item.text, "dimension": item.dimension,
+                "weight": item.weight, "state": pr["state"],
+                "votes": ["check"], "evidence_turn": pr["evidence_turn"],
+                "evidence_quote": pr["evidence_quote"],
+            })
             continue
         verdicts = [await judge.judge_one(dialogue, item) for _ in range(n)]
         vote = majority_vote([v["verdict"] for v in verdicts])

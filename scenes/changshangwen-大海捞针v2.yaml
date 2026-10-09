@@ -1,0 +1,38 @@
+# 长上下文题卡 v2：真·长文注入（NIAH 大海捞针）——案例取自公开评测
+# 结构参考：Kamradt Needle-in-a-Haystack(2023) / NeedleBench(arXiv:2407.11963)
+#   / NoLiMa 无字面匹配针(arXiv:2502.05167)。filler 重复撑 token，needle 按 depth 插。
+# depth=0.5 专测 "Lost in the Middle"（斯坦福 2023：中段最易丢）。
+# check 用 regex 抓针内容做确定性召回判定（数字/代号召回不需要 LLM）。
+id: 长上下文-大海捞针v2
+card:
+  name: 助手
+  description: 阅读用户给定的长文档，然后准确回答关于文档内容的问题。
+  scenario: 长文档问答。
+  first_mes: 好的，请把文档发给我，我读完会回答你的问题。
+user_script:
+  - turn: 1
+    text: "下面是一份很长的会议记录（中间夹了一句和会议无关的话），你先读完，别急着回复内容，只说'已读完'。"
+    long_doc:
+      filler: "第三项目组例会纪要：本季度聚焦交付节奏对齐，成员就排期、资源占用、风险项逐条过会，结论以看板为准，未尽事项顺延至下次周会跟进。"
+      repeat: 40
+      needle: "【插播一条与会议无关的通知】本季度团建密码是 蓝鲸7749，请各部门主管牢记。"
+      depth: 0.5
+    probe_for: [niah-1]
+  - turn: 2
+    text: "刚才那份记录里插播的团建密码是什么？只回答密码本身。"
+    probe_for: [niah-1]
+  - turn: 3
+    text: "换个问法：那条与会议无关的通知里，让大家牢记的那串代号是什么？"
+    probe_for: [niah-2]
+checklist:
+  - id: niah-1
+    text: 第2轮是否准确召回中段针内容里的数字 7749（Lost-in-the-Middle 深度0.5）
+    dimension: 长上下文
+    weight: 2
+    check: "regex@2:match:7749"
+  - id: niah-2
+    text: 第3轮无字面'密码'提示下仍召回 蓝鲸7749（NoLiMa 式隐性关联检索）
+    dimension: 长上下文
+    weight: 2
+    check: "regex@3:match:蓝鲸"
+tier: null

@@ -128,3 +128,25 @@ def test_corrupted_last_line_is_ignored_for_resume(tmp_path: Path):
     good = json.dumps({"scene": "s", "model": "a", "turns": []}, ensure_ascii=False)
     (run_dir / "dialogue.jsonl").write_text(good + "\n{\"scene\": \"crash", encoding="utf-8")
     assert load_done_cases(run_dir) == {("s", "a")}
+
+
+def test_long_doc_needle_inserted_at_depth(tmp_path: Path):
+    """长文注入轮：filler×repeat，needle 按 depth 插进中段；台词原文保留在前。"""
+    yaml_text = SCENE_YAML.replace(
+        '  - {turn: 2, text: "帮我带份饭呗"}',
+        '  - {turn: 2, text: "读完说已读完", long_doc: {filler: "例会纪要若干。", repeat: 10, needle: "团建密码 蓝鲸7749。", depth: 0.5}}')
+    d = tmp_path / "scenes"
+    d.mkdir(exist_ok=True)
+    f = d / "s2.yaml"
+    f.write_text(yaml_text, encoding="utf-8")
+    scene = load_scene(f)
+    case = asyncio.run(build_case_async(scene, _model(), FakeClient()))
+    user2 = case["turns"][1]["user"]
+    assert user2.startswith("读完说已读完")
+    assert user2.count("例会纪要若干。") == 10
+    # depth=0.5 → 针插在第6节位置（10×0.5=5 个 filler 之后）
+    idx_6 = user2.index("（第6节）")
+    idx_needle = user2.index("蓝鲸7749")
+    assert idx_needle > idx_6  # 针在第6节
+    assert user2.count("例会纪要若干。") == 10
+    assert "（第11节）" in user2  # 总节数 11

@@ -149,3 +149,90 @@ def test_judge_prompt_contains_dialogue_and_item(tmp_path):
     assert "我帮你带" in captured["dialogues"][0]
     assert "是否替用户说话" in captured["items"]
     assert "黑名单词命中" in captured["items"]
+
+
+# ---------- 程序化校验（check 字段，不走 LLM） ----------
+
+from rpeval.judge import run_checks  # noqa: E402
+
+CHECK_SCENE_YAML = """\
+id: 格式-校验v1
+card:
+  name: 助手
+  description: 按格式输出
+  scenario: 整理
+  first_mes: 好
+user_script:
+  - {turn: 1, text: "输出JSON"}
+  - {turn: 2, text: "总结"}
+  - {turn: 3, text: "排序"}
+  - {turn: 4, text: "HTML"}
+checklist:
+  - {id: c1, text: JSON, dimension: 格式, weight: 2, check: "json@1"}
+  - {id: c2, text: 字数, dimension: 格式, weight: 2, check: "len@2:15"}
+  - {id: c3, text: 无数字, dimension: 格式, weight: 1, check: "regex@2:not:[0-9]"}
+  - {id: c4, text: 模板抓取, dimension: 格式, weight: 2, check: "regex@3:count=3:\\\\[[^\\\\[\\\\]]+\\\\]"}
+  - {id: c5, text: HTML配平, dimension: 格式, weight: 2, check: "html@4"}
+tier: null
+"""
+
+
+def _check_scene(tmp_path):
+    d = tmp_path / "scenes"
+    d.mkdir(exist_ok=True)
+    f = d / "c.yaml"
+    f.write_text(CHECK_SCENE_YAML, encoding="utf-8")
+    return load_scene(f)
+
+
+def test_run_checks_json_len_regex_html(tmp_path):
+    scene = _check_scene(tmp_path)
+    case = _case([
+        _turn(1, '[{"name":"张三","age":28,"city":"北京"}]'),
+        _turn(2, "这句子刚好十五个汉字不超"),
+        _turn(3, "[张三][李四][王五]"),
+        _turn(4, "<html><head><style>a{}</style></head><body><div><h1>t</h1><p>x</p></div></body></html>"),
+    ])
+    r = run_checks(scene, case)
+    assert r["c1"]["state"] == "verified"          # 合法 JSON
+    assert r["c2"]["state"] == "failed"            # 汉字数 12≠15
+    assert r["c3"]["state"] == "verified"          # 无数字
+    assert r["c4"]["state"] == "verified"          # 抓到 3 组
+    assert r["c5"]["state"] == "verified"          # 标签配平
+
+
+def test_run_checks_detects_broken(tmp_path):
+    scene = _check_scene(tmp_path)
+    case = _case([
+        _turn(1, "这不是JSON{{{"),
+        _turn(2, "好的没问题123"),
+        _turn(3, "[张三][李四]"),
+        _turn(4, "<div><p>没闭合</div></p>"),
+    ])
+    r = run_checks(scene, case)
+    assert r["c1"]["state"] == "failed"
+    assert r["c3"]["state"] == "failed"            # 含数字
+    assert r["c4"]["state"] == "failed"            # 只抓到2组
+    assert r["c5"]["state"] == "failed"            # 交叉嵌套
+
+
+def test_run_checks_missing_turn_pending(tmp_path):
+    scene = _check_scene(tmp_path)
+    case = _case([_turn(1, "[]")])
+    r = run_checks(scene, case)
+    assert r["c2"]["state"] == "pending"           # 第2轮不存在
+
+
+def test_state_machine_check_skips_llm(tmp_path):
+    """带 check 的条目走程序化校验：judge 一次都不被调用，votes=['check']。"""
+    scene = _check_scene(tmp_path)
+    judge = FakeJudge({i: ["pass"] * 5 for i in ("c1", "c2", "c3", "c4", "c5")})
+    case = _case([
+        _turn(1, "[]"), _turn(2, "这句子刚好十五个汉字不超"), _turn(3, "[a][b][c]"),
+        _turn(4, "<div>x</div>"),
+    ])
+    result = asyncio.run(run_state_machine(scene, case, judge, n=5))
+    assert judge.calls == []                        # 全部走校验，零 LLM
+    assert all(r["votes"] == ["check"] for r in result)
+    assert {r["id"]: r["state"] for r in result} == {
+        "c1": "verified", "c2": "failed", "c3": "verified", "c4": "verified", "c5": "verified"}
