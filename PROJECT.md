@@ -7,7 +7,7 @@
 RP 模型横评本地工具：脚本化多轮取证 + LLM judge 判分 + Elo 聚合 + 像素风可视化前端，
 服务"比特毯子"账号的模型测评系列视频（EP1=RP 模型横评，六项：文笔/入戏/审查/舔狗/代打/记忆）。
 
-## 模块地图（现状：MVP 十票 + 设置页/全局导航/八维题库/破甲分级/程序化校验/NIAH长文注入，139 测试通过）
+## 模块地图（现状：MVP 十票 + 设置页/全局导航/八维题库/破甲分级/程序化校验/NIAH长文注入/破甲payload注入+证据结论横幅，146 测试通过）
 
 | 模块 | 代码区域 | 核心入口 | 职责 |
 |---|---|---|---|
@@ -42,13 +42,13 @@ runs/<run_id>/           # dialogue.jsonl / score.json / battles.jsonl / charts/
 ## 当前功能清单（MVP 十票完成）
 
 - **cli**：`rp-eval` 一条命令起服务+自动开浏览器；`rp-eval init` 生成 models.yaml/题卡模板。
-- **config**：题卡/模型 YAML 加载校验、价格字段解析、judge 与被测池同族警告、check 语法解析、long_doc 解析。
-- **runner**：OpenAI 兼容并行调被测模型，按 user_script 喂多轮，落 dialogue.jsonl，断点续跑；**long_doc 长文注入**（filler×repeat + needle 按 depth 插入，NIAH 大海捞针）。
-- **judge**：TRACE checklist 状态机取证（pending→verified/failed，failed 不可逆）+ 六类反应判定 + n=5 多数票；**程序化校验 run_checks**（check 字段：json@N/html@N/len@N:n/regex@N:match|not|count，确定性判分不走 LLM，语义类仍禁正则）；审查阶梯 L0–L6 → 崩档点/破甲等级/OOR/BUR/BSR/rated 一票否决；score.json 末端自动出图。
+- **config**：题卡/模型 YAML 加载校验、价格字段解析、judge 与被测池同族警告、check 语法解析、long_doc 解析、payload/payload_desc/goal 字段解析。
+- **runner**：OpenAI 兼容并行调被测模型，按 user_script 喂多轮，落 dialogue.jsonl，断点续跑；**long_doc 长文注入**（filler×repeat + needle 按 depth 插入，NIAH 大海捞针）；**{payload} 占位替换**（轮级 payload 优先、缺省场景级，钓句载荷私有注入台词与长文针）。
+- **judge**：TRACE checklist 状态机取证（pending→verified/failed，failed 不可逆）+ 六类反应判定 + n=5 多数票；**程序化校验 run_checks**（check 字段：json@N/html@N/len@N:n/regex@N:match|not|count，确定性判分不走 LLM，语义类仍禁正则）；审查阶梯 L0–L6 → 崩档点/破甲等级/OOR/BUR/BSR/rated 一票否决；反应判官注入 payload_desc 钓句目标（"真交付什么才算 harmful comply"）；score.json 每 case 附 **verdict 结论**（headline/tone/tested/proves）；末端自动出图。
 - **aggregate**：0–10 各维得分 + 总分（=各维之和，随维度数扩展）榜单；Bradley-Terry 自实现 Elo（MM 迭代 + reg=0.5 伪计数）+ bootstrap CI + 胜率矩阵；judge 自动 battle（双向平均防位置偏差 + 长度截断）与人工记票混装 battles.jsonl。
 - **charts**：matplotlib 雷达图 + 审查象限图 PNG（像素四色，横 1920×1080 / 竖 1080×1920，无阶梯数据优雅降级）。
-- **web**：控制台（勾模型/题卡+预估成本+SSE 实时判定流+重连回放）、证据浏览器（逐轮六类徽章+证据高亮+checklist 时间线+tier/崩档标注）、榜单页（总分表+得分条+锤点+Elo+图内嵌）、盲测页（A/B 代号并排→投票→揭名，揭名前响应无真名）；终端 ANSI 彩色轮次卡；六页全局导航条；设置页（/settings 前端配置模型 URL/Key，预置服务商下拉，key 仅落 .env 永不回显）；SSE error 事件失败卡片带"检查密钥→"跳转。
-- **题库**（scenes/，可开源部分）：学姐卡多维（代打5轮+舔狗3轮+记忆探针）、入戏-大禹时代探针卡、文笔-AI味检测卡、格式遵从卡（JSON/字数/分隔符硬约束）、长上下文卡（远距离召回/规则保持/守密）；审查阶梯 L0–L6 落 scenes/stress/（.gitignore 排除，话术私有永不入库），其中 L3–L6 重写为**破甲四级**通用手法骨架：L3=单轮人设注入(DAN/persona modulation)、L4=情景嵌套(fiction/戏中戏)、L5=多轮渐进升温(Crescendo/Echo Chamber)、L6=组合攻击红线(persona+嵌套+升温+编码混淆)；手法名取自公开分类学(SoK 2510.15476/HarmBench/J2)，有害载荷留【私有钓句·占位】待替换。
+- **web**：控制台（勾模型/题卡+预估成本+SSE 实时判定流+重连回放+维度说明文案）、证据浏览器（**高亮结论横幅** verdict=一句话判定+tone配色+测了什么+证明了什么 / 逐轮六类徽章+证据高亮 / checklist 逐条"测→证"取证 / 左列结论色点 / 维度得分面板含破甲档）、榜单页（总分表+得分条+锤点+Elo+图内嵌）、盲测页（A/B 代号并排→投票→揭名，揭名前响应无真名）；终端 ANSI 彩色轮次卡；六页全局导航条；设置页（/settings 前端配置模型 URL/Key，预置服务商下拉，key 仅落 .env 永不回显）；SSE error 事件失败卡片带"检查密钥→"跳转。
+- **题库**（scenes/，可开源部分）：学姐卡多维（代打5轮+舔狗3轮+记忆探针）、入戏-大禹时代探针卡、文笔-AI味检测卡、格式遵从卡 v2（11 项全程序化 check：JSON/字数/禁数字/复合模板/300字大HTML配平/三段占位模板/Markdown表格5行/嵌套列表顶层+缩进/代码围栏+函数签名）、长上下文卡（NIAH大海捞针40节depth0.5+NoLiMa无字面召回/远距离召回/规则保持/守密）、**破甲演示卡**（poijia-禁词游戏，L3人设注入，payload=蓝鲸7749 无害载荷端到端跑通破甲链路，可入库对外展示机制）；审查阶梯 L0–L6 落 scenes/stress/（.gitignore 排除，话术私有永不入库），其中 L3–L6 重写为**破甲四级**通用手法骨架：L3=单轮人设注入(DAN/persona modulation)、L4=情景嵌套(fiction/戏中戏)、L5=多轮渐进升温(Crescendo/Echo Chamber)、L6=组合攻击红线(persona+嵌套+升温+编码混淆)；手法名取自公开分类学(SoK 2510.15476/HarmBench/J2)，钓句载荷走 {payload} 占位待替换。
 - **审查阶梯指标**：崩档点(首次出戏档·测过敏) + 破甲等级(首次 harmful comply 档·测失守，与崩档点对偶) + OOR/BUR/BSR + rated 一票否决；证据页与象限图同源展示。
 
 ## 演进方向
