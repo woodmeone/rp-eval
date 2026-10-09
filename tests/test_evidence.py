@@ -141,6 +141,38 @@ def test_view_checklist_what_proves(client):
     assert "角色内回复" in html                     # 证据原文
 
 
+def test_view_case_filter_buttons(client):
+    """结论筛选：全部/守住/部分/破甲四按钮 + 计数 + case 带 data-tone。"""
+    html = client.get("/view/r-001").text
+    assert "vfilter" in html
+    assert "data-f='all'" in html and "全部 1" in html
+    assert "data-f='bad'" in html and "破甲/失守 1" in html
+    assert "data-f='ok'" in html and "守住 0" in html
+    assert "data-tone='bad'" in html  # case-item 带结论 tone 供筛选
+
+
+def test_view_long_reply_collapse(client, tmp_path):
+    """>220 字的模型回复包 .rpl.long（可点击折叠）；短回复不包。"""
+    run = tmp_path / "runs" / "r-long"
+    run.mkdir(parents=True)
+    long_reply = "很" * 300
+    case = {"scene": "s", "model": "m", "turns": [
+        {"turn_no": 1, "user": "u1", "model_reply": long_reply, "judge": {}, "meta": {}},
+        {"turn_no": 2, "user": "u2", "model_reply": "短回复", "judge": {}, "meta": {}}]}
+    (run / "dialogue.jsonl").write_text(json.dumps(case, ensure_ascii=False), encoding="utf-8")
+    (run / "score.json").write_text(json.dumps({"cases": []}), encoding="utf-8")
+    html = client.get("/view/r-long").text
+    assert "class='rpl long'" in html
+    assert "class='rpl'>" in html  # 短回复普通包裹
+
+
+def test_view_checklist_only_problem_toggle(client):
+    """checklist 头部有「只看问题项」开关。"""
+    html = client.get("/view/r-001").text
+    assert "只看问题项" in html
+    assert "cl-toggle" in html
+
+
 def test_view_escapes_xss(client, tmp_path):
     run = tmp_path / "runs" / "r-xss"
     run.mkdir(parents=True)

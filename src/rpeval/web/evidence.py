@@ -99,11 +99,22 @@ def render_view(detail: dict[str, Any]) -> str:
     esc = _html.escape
     cases = detail.get("cases", [])
     nav_items = "".join(
-        f"<div class='case-item{' active' if i == 0 else ''}' data-i='{i}'>"
+        f"<div class='case-item{' active' if i == 0 else ''}' data-i='{i}' "
+        f"data-tone='{(c.get('verdict') or {}).get('tone','mid')}'>"
         f"<span>{esc(c['model'])} × {esc(c['scene'])}</span>"
         f"<span class='score'>{c['total'] if c['total'] is not None else '—'}</span>"
         f"<span class='v-dot {(c.get('verdict') or {}).get('tone','mid')}'></span></div>"
         for i, c in enumerate(cases))
+    tone_counts = {"ok": 0, "mid": 0, "bad": 0}
+    for c in cases:
+        tone_counts[(c.get("verdict") or {}).get("tone", "mid")] += 1
+    case_filter = (
+        "<div class='vfilter'>"
+        f"<button class='vf active' data-f='all'>全部 {len(cases)}</button>"
+        f"<button class='vf vf-ok' data-f='ok'>守住 {tone_counts['ok']}</button>"
+        f"<button class='vf vf-mid' data-f='mid'>部分 {tone_counts['mid']}</button>"
+        f"<button class='vf vf-bad' data-f='bad'>破甲/失守 {tone_counts['bad']}</button>"
+        "</div>")
 
     def dims_block(c: dict[str, Any]) -> str:
         """维度得分面板：每个维度测了什么、得几分（0-10）、几条过/几条挂。"""
@@ -163,11 +174,14 @@ def render_view(detail: dict[str, Any]) -> str:
                 badge = f"<span class='badge {_BADGE_CLASS.get(r, 'steel')}'>{esc(r)}</span>"
             quote = j.get("reaction_evidence") or j.get("evidence_quote") or ""
             hl = f"<span class='hl'>{esc(str(quote))}</span>" if quote else ""
+            reply = str(t.get("model_reply", ""))
+            long_cls = " long" if len(reply) > 220 else ""
             parts.append(
                 f"<div class='turn'><div class='u'>用户：{esc(str(t.get('user','')))}</div>"
-                f"<div class='m'>模型：{esc(str(t.get('model_reply','')))}{badge}{hl}</div></div>")
+                f"<div class='m'>模型：<span class='rpl{long_cls}'>{esc(reply)}</span>{badge}{hl}</div></div>")
         if c.get("checklist"):
-            parts.append("<div class='cl'><h3>checklist 取证 · 测了什么 → 证明了什么</h3>")
+            parts.append("<div class='cl'><h3>checklist 取证 · 测了什么 → 证明了什么"
+                         "<label class='cl-only'><input type='checkbox' class='cl-toggle'> 只看问题项</label></h3>")
             for cid, item in c["checklist"].items():
                 st = item.get("state")
                 mark = {"verified": "✓", "failed": "✗", "pending": "…"}.get(st, "…")
@@ -236,10 +250,21 @@ def render_view(detail: dict[str, Any]) -> str:
 .dm-s {{ width:34px; text-align:right; flex:none; }}
 .dm-s.ok {{ color:var(--steel); }} .dm-s.mid {{ color:#e8c46f; }} .dm-s.bad {{ color:var(--sakura); }}
 .dm-cnt {{ color:rgba(251,253,253,.55); flex:none; }}
+.vfilter {{ display:flex; gap:6px; flex-wrap:wrap; margin-bottom:10px; }}
+.vf {{ font-size:9px; padding:3px 8px; border:2px solid #5a5f7a; background:transparent; color:rgba(251,253,253,.6); cursor:pointer; font-family:inherit; }}
+.vf.active {{ border-color:var(--steel); color:var(--ink); background:var(--steel); }}
+.vf.vf-ok.active {{ border-color:var(--steel); background:var(--steel); }}
+.vf.vf-mid.active {{ border-color:#e8c46f; background:#e8c46f; }}
+.vf.vf-bad.active {{ border-color:var(--sakura); background:var(--sakura); }}
+.rpl.long {{ display:inline-block; max-height:4.2em; overflow:hidden; cursor:pointer; vertical-align:bottom; position:relative; }}
+.rpl.long.expanded {{ max-height:none; }}
+.cl-only {{ float:right; font-size:9px; font-weight:normal; color:rgba(251,253,253,.55); cursor:pointer; }}
+.cl-only input {{ vertical-align:middle; margin-right:2px; }}
 </style></head>
 <body>{render_nav("/evidence")}<div class="case">
   <div>
     <h2 style="font-size:12px;color:var(--paper);margin:10px 0">证据浏览器 · {esc(detail.get('run_id',''))}</h2>
+    {case_filter}
     {nav_items}</div>
   <div>{panes}</div>
 </div><div class="scanlines"></div>
@@ -249,6 +274,40 @@ document.querySelectorAll('.case-item').forEach(el=>el.addEventListener('click',
   el.classList.add('active');
   const i=el.dataset.i;
   document.querySelectorAll('.pane').forEach(p=>p.style.display = p.dataset.i===i?'block':'none');
+}}));
+// 结论筛选：按 tone 隐藏左列 case，并把可见的第一个 pane 切出来
+function applyFilter(f){{
+  let firstVisible=null;
+  document.querySelectorAll('.case-item').forEach(el=>{{
+    const show = (f==='all') || el.dataset.tone===f;
+    el.style.display = show?'':'none';
+    if(show && firstVisible===null) firstVisible=el.dataset.i;
+  }});
+  document.querySelectorAll('.pane').forEach(p=>p.style.display='none');
+  if(firstVisible!==null){{
+    document.querySelectorAll('.case-item').forEach(x=>x.classList.remove('active'));
+    const el=document.querySelector(".case-item[data-i='"+firstVisible+"']");
+    if(el) el.classList.add('active');
+    const pane=document.querySelector(".pane[data-i='"+firstVisible+"']");
+    if(pane) pane.style.display='block';
+  }}
+}}
+document.querySelectorAll('.vf').forEach(b=>b.addEventListener('click',()=>{{
+  document.querySelectorAll('.vf').forEach(x=>x.classList.remove('active'));
+  b.classList.add('active');
+  applyFilter(b.dataset.f);
+}}));
+// 长回复折叠：点击 .rpl.long 展开/收起
+document.querySelectorAll('.turn .rpl.long').forEach(el=>{{
+  el.title='点击展开/收起';
+  el.addEventListener('click',()=>el.classList.toggle('expanded'));
+}});
+// checklist 只看问题项：勾选后隐藏 verified 行
+document.querySelectorAll('.cl-toggle').forEach(cb=>cb.addEventListener('change',()=>{{
+  const cl=cb.closest('.cl');
+  cl.querySelectorAll('.cl-row').forEach(r=>{{
+    r.style.display = (cb.checked && r.classList.contains('verified'))?'none':'';
+  }});
 }}));
 </script></body></html>
 """
