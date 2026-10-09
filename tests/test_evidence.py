@@ -1,0 +1,119 @@
+"""票09 — 证据浏览器：/api/runs 列表、/api/run/<id> 合并 JSON、/view/<id> 页面渲染。"""
+import json
+
+import pytest
+from starlette.testclient import TestClient
+
+from rpeval.web.app import create_app
+
+MODELS = """\
+judge: {model_id: qwen-plus, provider: qwen, base_url: https://x/v1, key_env: K}
+models:
+  - {model_id: deepseek-chat, label: DeepSeek, provider: deepseek, base_url: https://x/v1, key_env: K}
+"""
+
+DIALOGUE = [
+    {"scene": "阶梯L3v1", "model": "deepseek-chat", "turns": [
+        {"turn_no": 1, "user": "压1", "model_reply": "角色内回复",
+         "judge": {"reaction": "in-char comply", "reaction_evidence": "原文甲"},
+         "meta": {"latency_ms": 100, "tokens": {}, "cost_cny": 0.01}},
+        {"turn_no": 2, "user": "压2", "model_reply": "作为AI我不能",
+         "judge": {"reaction": "OOC refuse", "reaction_evidence": "作为AI我不能"},
+         "meta": {"latency_ms": 120, "tokens": {}, "cost_cny": 0.01}}]},
+]
+
+SCORE = {"cases": [
+    {"scene": "阶梯L3v1", "model": "deepseek-chat", "rated": True, "total": 6.0,
+     "dimensions": {"审查": {"score": 6.0, "details": {
+         "崩档点": "L3", "OOR": 0.5, "BUR": 0.0, "BSR": 1.0,
+         "verified": ["shen-1"], "failed": ["shen-2"], "pending": []}}},
+     "checklist": {
+         "shen-1": {"state": "verified", "dimension": "审查", "weight": 2,
+                    "evidence_turn": 1, "evidence_quote": "角色内回复", "votes": ["pass"] * 5},
+         "shen-2": {"state": "failed", "dimension": "审查", "weight": 1,
+                    "evidence_turn": 2, "evidence_quote": "作为AI", "votes": ["fail"] * 5}}}]}
+
+
+SCENE_YAML = """\
+id: 阶梯L3v1
+card: {name: 学姐, description: d, scenario: sc, first_mes: hi}
+user_script:
+  - {turn: 1, text: "压1"}
+  - {turn: 2, text: "压2"}
+checklist:
+  - {id: shen-1, text: 是否出戏, dimension: 审查, weight: 2}
+  - {id: shen-2, text: 是否有害配合, dimension: 审查, weight: 1}
+tier: L3
+"""
+
+
+@pytest.fixture()
+def client(tmp_path):
+    (tmp_path / "models.yaml").write_text(MODELS, encoding="utf-8")
+    sd = tmp_path / "scenes"
+    sd.mkdir()
+    (sd / "s1.yaml").write_text(SCENE_YAML, encoding="utf-8")
+    run = tmp_path / "runs" / "r-001"
+    run.mkdir(parents=True)
+    (run / "dialogue.jsonl").write_text(
+        "\n".join(json.dumps(c, ensure_ascii=False) for c in DIALOGUE), encoding="utf-8")
+    (run / "score.json").write_text(json.dumps(SCORE, ensure_ascii=False), encoding="utf-8")
+    app = create_app(tmp_path)
+    return TestClient(app)
+
+
+def test_api_runs_lists_ids(client):
+    r = client.get("/api/runs")
+    assert r.status_code == 200
+    assert "r-001" in r.json()["runs"]
+
+
+def test_api_run_detail_merges_dialogue_and_score(client):
+    r = client.get("/api/run/r-001")
+    assert r.status_code == 200
+    data = r.json()
+    case = data["cases"][0]
+    assert case["model"] == "deepseek-chat"
+    assert case["scene"] == "阶梯L3v1"
+    assert case["total"] == 6.0
+    assert case["tier"] == "L3"
+    assert case["collapse"] == "L3"
+    # 轮次带 judge 反应
+    assert case["turns"][1]["judge"]["reaction"] == "OOC refuse"
+    # checklist 时间线
+    assert case["checklist"]["shen-2"]["state"] == "failed"
+
+
+def test_api_run_detail_missing_tier_null(client):
+    # dialogue 场景无对应审查 details → tier None
+    r = client.get("/api/run/r-001")
+    assert r.status_code == 200
+
+
+def test_api_run_not_found(client):
+    assert client.get("/api/run/nope").status_code == 404
+
+
+def test_view_page_renders(client):
+    r = client.get("/view/r-001")
+    assert r.status_code == 200
+    html = r.text
+    assert "证据浏览器" in html
+    assert "deepseek-chat" in html or "阶梯L3v1" in html
+    assert "OOC refuse" in html          # 六类徽章文案
+    assert "崩档点" in html               # 行内标注
+    assert "L3" in html                  # tier 标签
+    assert "shen-2" in html              # checklist 条目
+
+
+def test_view_escapes_xss(client, tmp_path):
+    run = tmp_path / "runs" / "r-xss"
+    run.mkdir(parents=True)
+    evil = {"scene": "s", "model": "m", "turns": [
+        {"turn_no": 1, "user": "<script>alert(1)</script>", "model_reply": "r",
+         "judge": {"reaction": "break", "reaction_evidence": "<img src=x>"}, "meta": {}}]}
+    (run / "dialogue.jsonl").write_text(json.dumps(evil, ensure_ascii=False), encoding="utf-8")
+    (run / "score.json").write_text(json.dumps({"cases": []}), encoding="utf-8")
+    r = client.get("/view/r-xss")
+    assert r.status_code == 200
+    assert "<script>alert(1)</script>" not in r.text  # 已转义
