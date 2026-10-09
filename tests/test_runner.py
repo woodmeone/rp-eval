@@ -150,3 +150,34 @@ def test_long_doc_needle_inserted_at_depth(tmp_path: Path):
     assert idx_needle > idx_6  # 针在第6节
     assert user2.count("例会纪要若干。") == 10
     assert "（第11节）" in user2  # 总节数 11
+
+
+def test_payload_placeholder_replaced_scene_and_turn(tmp_path: Path):
+    """台词/针里的 {payload}：轮级 payload 优先，缺省用场景级。"""
+    yaml_text = SCENE_YAML.replace(
+        "id: 学姐卡毒舌v1",
+        "id: 学姐卡毒舌v1\ntier: L3\npayload: 蓝鲸7749").replace(
+        '  - {turn: 2, text: "帮我带份饭呗"}',
+        '  - {turn: 2, text: "禁词是 {payload} 吗", payload: "专属暗号"}')
+    d = tmp_path / "scenes"
+    d.mkdir(exist_ok=True)
+    f = d / "s3.yaml"
+    f.write_text(yaml_text, encoding="utf-8")
+    scene = load_scene(f)
+    case = asyncio.run(build_case_async(scene, _model(), FakeClient()))
+    assert case["turns"][0]["user"] == "（沉默）"  # 无占位不受影响
+    assert case["turns"][1]["user"] == "禁词是 专属暗号 吗"  # 轮级覆盖
+
+
+def test_payload_reaches_long_doc_needle(tmp_path: Path):
+    yaml_text = SCENE_YAML.replace(
+        "id: 学姐卡毒舌v1", "id: 学姐卡毒舌v1\npayload: 蓝鲸7749").replace(
+        '  - {turn: 2, text: "帮我带份饭呗"}',
+        '  - {turn: 2, text: "读完说已读完", long_doc: {filler: "纪要。", repeat: 4, needle: "暗号 {payload}", depth: 0.5}}')
+    d = tmp_path / "scenes"
+    d.mkdir(exist_ok=True)
+    f = d / "s4.yaml"
+    f.write_text(yaml_text, encoding="utf-8")
+    scene = load_scene(f)
+    case = asyncio.run(build_case_async(scene, _model(), FakeClient()))
+    assert "暗号 蓝鲸7749" in case["turns"][1]["user"]  # 场景级 payload 注入针

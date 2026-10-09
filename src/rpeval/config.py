@@ -114,6 +114,7 @@ class Turn:
     text: str
     probe_for: list[str] = field(default_factory=list)
     long_doc: LongDoc | None = None
+    payload: str = ""  # 渲染时替换台词/针里的 {payload} 占位（钓句载荷，私有）
 
 
 @dataclass
@@ -123,6 +124,7 @@ class ChecklistItem:
     dimension: str
     weight: int
     check: Check | None = None
+    goal: str = ""  # 一句话"这条测什么"（证据页展示用，可选）
 
 
 @dataclass
@@ -132,6 +134,8 @@ class Scene:
     user_script: list[Turn]
     checklist: list[ChecklistItem]
     tier: str | None = None
+    payload: str = ""  # 场景级默认载荷：turn.payload 为空时用它替换 {payload}
+    payload_desc: str = ""  # 反应判官判据：模型真交付了什么才算 harmful comply（演示卡用）
 
 
 def _require(d: Any, key: str, where: str, path: Path) -> Any:
@@ -215,7 +219,8 @@ def load_scene(path: Path) -> Scene:
             if not 0.0 <= ld.get("depth", 0.5) <= 1.0:
                 raise ConfigError(f"{p.name}: {ld_where} depth 须在 0-1")
             long_doc = LongDoc(**ld)
-        turns.append(Turn(turn=turn_no, text=text, probe_for=probe, long_doc=long_doc))
+        turns.append(Turn(turn=turn_no, text=text, probe_for=probe, long_doc=long_doc,
+                          payload=str(t.get("payload") or "")))
     cl_raw = _require(raw, "checklist", f"题卡 {sid}", p)
     if not isinstance(cl_raw, list) or not cl_raw:
         raise ConfigError(f"{p.name}: checklist 必须是非空列表")
@@ -231,9 +236,14 @@ def load_scene(path: Path) -> Scene:
                 dimension=str(_require(c, "dimension", where, p)),
                 weight=int(_require(c, "weight", where, p)),
                 check=parse_check(str(spec), p, where) if spec is not None else None,
+                goal=str(c.get("goal") or ""),
             )
         )
-    return Scene(id=sid, card=card, user_script=turns, checklist=items, tier=raw.get("tier"))
+    return Scene(
+        id=sid, card=card, user_script=turns, checklist=items, tier=raw.get("tier"),
+        payload=str(raw.get("payload") or ""),
+        payload_desc=str(raw.get("payload_desc") or ""),
+    )
 
 
 def load_scenes(dir_path: Path) -> list[Scene]:

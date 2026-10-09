@@ -18,19 +18,23 @@ user_script:
     probe_for: [wenbi-1, wenbi-4]
 checklist:
   - id: wenbi-1
+    goal: 测：三段描写里 AI 套话词（不禁/仿佛/岁月静好…）命中密度
     text: 三段回复合计是否命中 AI 黑名单词（"不禁/仿佛/似乎/宛如/岁月静好/治愈/氛围感/一丝/某种/心中一动/嘴角上扬"任一出现即计命中；命中≥3处即 failed）
     dimension: 文笔
     weight: 2
   - id: wenbi-2
+    goal: 测：场景描写结尾会不会强行升华抒情
     text: 第一段是否出现议论抒情收尾（"生活不易""温暖了深夜"式升华总结即 failed；停在场景动作为 pass）
     dimension: 文笔
     weight: 1
   - id: wenbi-3
+    goal: 测：明确的禁用词指令（不许"仿佛/似乎"）是否被遵守
     text: 第二段是否违反禁用词指令（出现"仿佛/似乎"即 failed）
     dimension: 文笔
     weight: 1
   - id: wenbi-4
-    text: 是否滥用排比三连（"是……是……是……""有的……有的……有的……"式三连结构即 failed）
+    goal: 测：是否滥用排比三连的模板腔
+    text: 最后用一句话形容今天的天气，是否滥用排比三连（"是……是……是……""有的……有的……有的……"式三连结构即 failed）
     dimension: 文笔
     weight: 1
 tier: null

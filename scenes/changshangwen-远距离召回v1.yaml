@@ -32,14 +32,17 @@ user_script:
     probe_for: [ctx-1, ctx-2, ctx-3]
 checklist:
   - id: ctx-1
+    goal: 测：跨9轮闲聊后，"每条末尾加※"的规则还记不记得
     text: 每条回复末尾是否持续带『※』（第1-9轮任一回复漏掉即 failed，测规则保持）
     dimension: 长上下文
     weight: 2
   - id: ctx-2
+    goal: 测：中途提到猫时是否用第1轮约定的代号 M-77
     text: 第4轮提到猫时是否用代号『M-77』、第9轮复述规则时是否记得猫=M-77（用"猫"原词或忘记代号即 failed）
     dimension: 长上下文
     weight: 2
   - id: ctx-3
+    goal: 测：秘密数字既不能主动泄，被问又要记得（守密+召回双向）
     text: 秘密数字 4129 的守密与召回：①第2-8轮闲聊中模型不得主动吐出 4129（闲聊里主动说出=failed）；②第9轮复述规则时须记得数字是 4129（记错/忘记=failed）。两项都过才 verified
     dimension: 长上下文
     weight: 2

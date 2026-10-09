@@ -44,6 +44,7 @@ def run_detail(root: Path, run_id: str, scenes: list[Scene]) -> dict[str, Any] |
             "model": c["model"],
             "total": sc.get("total"),
             "rated": sc.get("rated", True),
+            "verdict": sc.get("verdict"),
             "tier": tier_of.get(c["scene"]),
             "collapse": stress.get("崩档点"),
             "jb_level": stress.get("破甲等级"),
@@ -100,7 +101,8 @@ def render_view(detail: dict[str, Any]) -> str:
     nav_items = "".join(
         f"<div class='case-item{' active' if i == 0 else ''}' data-i='{i}'>"
         f"<span>{esc(c['model'])} × {esc(c['scene'])}</span>"
-        f"<span class='score'>{c['total'] if c['total'] is not None else '—'}</span></div>"
+        f"<span class='score'>{c['total'] if c['total'] is not None else '—'}</span>"
+        f"<span class='v-dot {(c.get('verdict') or {}).get('tone','mid')}'></span></div>"
         for i, c in enumerate(cases))
 
     def dims_block(c: dict[str, Any]) -> str:
@@ -135,8 +137,20 @@ def render_view(detail: dict[str, Any]) -> str:
                 f"<span class='dims-t'>总分 {total if total is not None else '—'} / {len(dims)*10}</span>{rated}</div>"
                 f"{''.join(rows)}</div>")
 
+    def verdict_block(c: dict[str, Any]) -> str:
+        """高亮结论横幅：一句话判定（tone 配色）+ 测了什么 + 证明了什么。"""
+        v = c.get("verdict")
+        if not v:
+            return ""
+        tone = v.get("tone", "mid")
+        return (f"<div class='verdict v-{tone}'>"
+                f"<div class='v-head'>{esc(str(v.get('headline','')))}</div>"
+                f"<div class='v-row'><span class='v-tag'>测了什么</span>{esc(str(v.get('tested','')))}</div>"
+                f"<div class='v-row'><span class='v-tag'>证明了什么</span>{esc(str(v.get('proves','')))}</div>"
+                f"</div>")
+
     def turn_block(c: dict[str, Any]) -> str:
-        parts = [dims_block(c)]
+        parts = [verdict_block(c), dims_block(c)]
         if c.get("tier"):
             col = f" · 崩档点 {esc(str(c['collapse']))}" if c.get("collapse") else ""
             jb = f" · 破甲于 {esc(str(c['jb_level']))}" if c.get("jb_level") else ""
@@ -153,13 +167,22 @@ def render_view(detail: dict[str, Any]) -> str:
                 f"<div class='turn'><div class='u'>用户：{esc(str(t.get('user','')))}</div>"
                 f"<div class='m'>模型：{esc(str(t.get('model_reply','')))}{badge}{hl}</div></div>")
         if c.get("checklist"):
-            parts.append("<div class='cl'><h3>checklist 时间线</h3>")
+            parts.append("<div class='cl'><h3>checklist 取证 · 测了什么 → 证明了什么</h3>")
             for cid, item in c["checklist"].items():
                 st = item.get("state")
                 mark = {"verified": "✓", "failed": "✗", "pending": "…"}.get(st, "…")
-                parts.append(f"<div class='cl-row {st}'><b>{esc(cid)}</b> {mark} "
-                             f"[{esc(item.get('dimension',''))} w{item.get('weight','')}] "
-                             f"<i>{esc(str(item.get('evidence_quote','')))}</i></div>")
+                goal = item.get("goal") or item.get("text") or ""
+                quote = str(item.get("evidence_quote", ""))
+                et = item.get("evidence_turn")
+                proves = (f"<span class='cl-turn'>第{et}轮</span>"
+                          f"<i class='cl-quote'>{esc(quote[:160])}</i>" if quote else "<i class='cl-quote'>—</i>")
+                parts.append(
+                    f"<div class='cl-row {st}'>"
+                    f"<div class='cl-top'><b>{esc(cid)}</b> {mark} "
+                    f"[{esc(item.get('dimension',''))} w{item.get('weight','')}]</div>"
+                    f"<div class='cl-what'><span class='cl-tag'>测</span>{esc(goal)}</div>"
+                    f"<div class='cl-what'><span class='cl-tag'>证</span>{proves}</div>"
+                    f"</div>")
             parts.append("</div>")
         return "".join(parts)
 
@@ -185,8 +208,22 @@ def render_view(detail: dict[str, Any]) -> str:
 .hl {{ background:rgba(232,160,191,.25); padding:0 4px; margin-left:8px; }}
 .tier-tag {{ color:var(--sakura); font-size:10px; margin-bottom:8px; }}
 .cl {{ margin-top:14px; }} .cl h3 {{ font-size:11px; color:var(--steel); margin-bottom:6px; }}
-.cl-row {{ font-size:10px; line-height:1.8; }}
-.cl-row.verified {{ color:var(--steel); }} .cl-row.failed {{ color:var(--sakura); }} .cl-row.pending {{ color:#5a5f7a; }}
+.cl-row {{ font-size:10px; line-height:1.7; margin-bottom:8px; padding:6px 8px; border-left:3px solid #5a5f7a; background:rgba(251,253,253,.03); }}
+.cl-row.verified {{ border-left-color:var(--steel); }} .cl-row.failed {{ border-left-color:var(--sakura); }} .cl-row.pending {{ opacity:.55; }}
+.cl-top b {{ color:var(--paper); }} .cl-top {{ font-size:10px; }}
+.cl-what {{ margin-top:2px; }} .cl-tag {{ display:inline-block; width:16px; text-align:center; margin-right:6px; font-size:9px; color:var(--ink); background:var(--steel); }}
+.cl-what .cl-tag + * {{ color:rgba(251,253,253,.8); }}
+.cl-turn {{ color:var(--steel); margin-right:6px; }} .cl-quote {{ color:rgba(251,253,253,.65); }}
+.verdict {{ border:2px solid var(--steel); padding:10px 12px; margin-bottom:12px; background:rgba(186,194,247,.07); }}
+.verdict.v-ok {{ border-color:var(--steel); background:rgba(186,194,247,.10); }}
+.verdict.v-mid {{ border-color:#e8c46f; background:rgba(232,196,111,.08); }}
+.verdict.v-bad {{ border-color:var(--sakura); background:rgba(232,160,191,.10); }}
+.v-head {{ font-size:13px; letter-spacing:1px; margin-bottom:6px; color:var(--paper); }}
+.verdict.v-bad .v-head {{ color:var(--sakura); }} .verdict.v-ok .v-head {{ color:var(--steel); }} .verdict.v-mid .v-head {{ color:#e8c46f; }}
+.v-row {{ font-size:10px; line-height:1.8; color:rgba(251,253,253,.75); }}
+.v-tag {{ display:inline-block; width:56px; text-align:center; margin-right:8px; font-size:9px; color:var(--ink); background:var(--steel); }}
+.v-dot {{ display:inline-block; width:8px; height:8px; margin-left:6px; background:#e8c46f; }}
+.v-dot.ok {{ background:var(--steel); }} .v-dot.bad {{ background:var(--sakura); }}
 .dims {{ border:2px solid var(--steel); padding:10px 12px; margin-bottom:14px; background:rgba(186,194,247,.06); }}
 .dims-h {{ font-size:11px; color:var(--steel); letter-spacing:2px; margin-bottom:8px; }}
 .dims-t {{ margin-left:12px; color:var(--paper); }}

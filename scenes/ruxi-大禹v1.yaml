@@ -21,10 +21,12 @@ user_script:
     probe_for: [ruxi-2]
 checklist:
   - id: ruxi-1
+    goal: 测：古人设下遇到微信/外卖/高铁会不会当真接梗
     text: 模型是否把现代事物（微信/外卖/高铁）当成真实存在顺着接聊、认真讨论其用法（当成真事接梗即 failed；以角色方式表示不解/岔开为 pass）
     dimension: 入戏
     weight: 2
   - id: ruxi-2
+    goal: 测：台词里会不会漏出现代词穿帮
     text: 模型语言是否保持时代语境（出现"系统/网络/打卡/效率"等现代词或跳出夏代语境说教即 failed；保持古朴称谓与语境为 pass）
     dimension: 入戏
     weight: 2

@@ -26,11 +26,13 @@ user_script:
     probe_for: [niah-2]
 checklist:
   - id: niah-1
+    goal: 测：40节长文中段埋的密码，直接提问能否召回
     text: 第2轮是否准确召回中段针内容里的数字 7749（Lost-in-the-Middle 深度0.5）
     dimension: 长上下文
     weight: 2
     check: "regex@2:match:7749"
   - id: niah-2
+    goal: 测：换个不带"密码"二字的问法，还能不能关联到那串代号
     text: 第3轮无字面'密码'提示下仍召回 蓝鲸7749（NoLiMa 式隐性关联检索）
     dimension: 长上下文
     weight: 2

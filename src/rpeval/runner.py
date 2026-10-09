@@ -30,7 +30,7 @@ async def build_case_async(
         ]
     turns: list[dict[str, Any]] = []
     for step in scene.user_script:
-        user_text = _render_turn(step)
+        user_text = _render_turn(step, scene)
         history.append({"role": "user", "content": user_text})
         t0 = time.monotonic()
         reply, usage = await client.chat(history)
@@ -56,16 +56,21 @@ async def build_case_async(
     return {"scene": scene.id, "model": model.model_id, "turns": turns}
 
 
-def _render_turn(step) -> str:
-    """普通轮=台词原文；长文注入轮=filler×repeat，needle 按 depth 插进第 k 节。"""
+def _render_turn(step, scene: Scene | None = None) -> str:
+    """普通轮=台词原文；长文注入轮=filler×repeat，needle 按 depth 插进第 k 节。
+
+    {payload} 占位：turn.payload 优先，缺省用 scene.payload（钓句载荷私有注入）。"""
+    pay = step.payload or (scene.payload if scene is not None else "")
+    text = step.text.replace("{payload}", pay)
     ld = step.long_doc
     if ld is None:
-        return step.text
+        return text
+    needle = ld.needle.replace("{payload}", pay)
     parts = [ld.filler] * ld.repeat
     k = max(0, min(ld.repeat, int(ld.repeat * ld.depth)))
-    parts.insert(k, ld.needle)
+    parts.insert(k, needle)
     body = "\n".join(f"（第{i + 1}节）{p}" for i, p in enumerate(parts))
-    return step.text + "\n" + body
+    return text + "\n" + body
 
 
 def _system_prompt(scene: Scene) -> str:

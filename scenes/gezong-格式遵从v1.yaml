@@ -23,35 +23,80 @@ user_script:
   - turn: 5
     text: "按这个模板输出，尖括号里填对应内容、其余字符一字不动：『【<姓名>|<城市>|<年龄岁>】』，填李四的信息。"
     probe_for: [fmt-6]
+  - turn: 6
+    text: "把这三个人的姓名和城市做成 Markdown 表格，固定两列（姓名|城市）：一行表头、一行分隔线（|---|---|）、三行数据，共 5 行，表格前后不要任何文字。"
+    probe_for: [fmt-7]
+  - turn: 7
+    text: "介绍两个城市：顶层用『- 城市名』共 2 项，每项下面缩进两个空格列 2 个『- 特产名』共 4 项，一共 6 行，别的字一个都不要多写。"
+    probe_for: [fmt-8, fmt-9]
+  - turn: 8
+    text: "写一个 Python 函数 sieve(n) 返回不超过 n 的素数列表：整段代码必须包在 ```python 围栏里，且只出现这一对围栏，围栏外不要任何解释文字。"
+    probe_for: [fmt-10, fmt-11]
 checklist:
   - id: fmt-1
+    goal: 测：要求纯 JSON 输出时是否真的可解析
     text: 第1轮输出可被 JSON 解析（合法数组）
     dimension: 格式
     weight: 2
     check: "json@1"
   - id: fmt-2
+    goal: 测：精确字数指令（恰好15个汉字）能否命中
     text: 第2轮恰好 15 个汉字
     dimension: 格式
     weight: 2
     check: "len@2:15"
   - id: fmt-3
+    goal: 测：禁数字指令（含中文数字）是否被遵守
     text: 第2轮不含任何数字（0-9 或一二三…十百千万）
     dimension: 格式
     weight: 1
     check: "regex@2:not:[0-9０-９一二三四五六七八九十百千万两]"
   - id: fmt-4
+    goal: 测：『[姓名](城市)』×3 竖线分隔的复合模板能否完整输出
     text: 第3轮严格『[姓名](城市)』×3 竖线分隔（正则抓 3 组完整字段）
     dimension: 格式
     weight: 2
     check: "regex@3:count=3:\\[[^\\[\\]]+\\]\\([^()]+\\)"
   - id: fmt-5
+    goal: 测：300字大 HTML 页面标签配平（结构越大越易掉格式）
     text: 第4轮 HTML 标签配平可解析（div/h1/p 成对闭合）
     dimension: 格式
     weight: 2
     check: "html@4"
   - id: fmt-6
+    goal: 测：【名|城|龄】三段占位模板是否一字不动照填
     text: 第5轮模板完整（【…|…|…】三段占位都填了内容，正则抓全）
     dimension: 格式
     weight: 2
     check: "regex@5:match:【[^|]+\\|[^|]+\\|[^|]+】"
+  - id: fmt-7
+    goal: 测：Markdown 两列表格是否恰好 5 行（表头+分隔+3数据）
+    text: 第6轮恰为 5 行两列表格行（每行 |x|y| 结构完整）
+    dimension: 格式
+    weight: 2
+    check: "regex@6:count=5:(?m)^\\|[^|\\n]+\\|[^|\\n]+\\|[ \\t]*$"
+  - id: fmt-8
+    goal: 测：嵌套列表顶层是否恰好 2 项
+    text: 第7轮顶层列表项恰好 2 个（行首『- 』）
+    dimension: 格式
+    weight: 1
+    check: "regex@7:count=2:(?m)^- \\S"
+  - id: fmt-9
+    goal: 测：子项是否真缩进（掉缩进=掉格式）
+    text: 第7轮缩进子项恰好 4 个（行首≥2空格『- 』）
+    dimension: 格式
+    weight: 2
+    check: "regex@7:count=4:(?m)^[ ]{2,}- \\S"
+  - id: fmt-10
+    goal: 测：代码是否恰好包在一对 ```python 围栏里
+    text: 第8轮恰有一对 ```python 围栏（围栏数=1）
+    dimension: 格式
+    weight: 2
+    check: "regex@8:count=1:```python[\\s\\S]*?```"
+  - id: fmt-11
+    goal: 测：函数签名是否按要求命名 sieve
+    text: 第8轮含 def sieve( 函数定义
+    dimension: 格式
+    weight: 1
+    check: "regex@8:match:def sieve\\("
 tier: null
