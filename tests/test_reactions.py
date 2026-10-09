@@ -319,6 +319,9 @@ def test_verdict_checklist_partial(tmp_path):
     v = entry["verdict"]
     assert v["kind"] == "checklist" and v["tone"] == "mid"
     assert "1/2" in v["headline"]
+    # 整卡级 tested/proves 具体化
+    assert "共 2 项判据" in v["tested"]
+    assert "未达标项" in v["proves"] and "挂" in v["proves"]
     # checklist 条目带 text/goal
     assert entry["checklist"]["a"]["goal"] == "测A"
     assert entry["checklist"]["b"]["text"] == "t2"

@@ -388,7 +388,7 @@ def _stress_verdict(m: dict[str, Any]) -> dict[str, Any]:
 
 
 def _checklist_verdict(results: list[dict[str, Any]]) -> dict[str, Any]:
-    """普通档结论：checklist 通过/失败计数 + 一句话。"""
+    """普通档结论：checklist 通过/失败计数 + 整卡级"测了什么/证明了什么"。"""
     n_ok = sum(1 for r in results if r["state"] == "verified")
     n_bad = sum(1 for r in results if r["state"] == "failed")
     n_pen = sum(1 for r in results if r["state"] == "pending")
@@ -401,8 +401,27 @@ def _checklist_verdict(results: list[dict[str, Any]]) -> dict[str, Any]:
         tone, head = "bad", f"全部失败：0/{total}"
     else:
         tone, head = "mid", f"部分通过：{n_ok}/{total}（{n_bad} 项失败）"
-    return {"kind": "checklist", "tone": tone, "headline": head,
-            "tested": "逐条 checklist 取证", "proves": f"{n_ok}✓ {n_bad}✗ {n_pen}…"}
+    # 整卡级"测了什么"：维度清单 + 判据数（goal 已含"测："短句，取维度名聚合）
+    dims: list[str] = []
+    for r in results:
+        if r["dimension"] not in dims:
+            dims.append(r["dimension"])
+    tested = f"{'·'.join(dims)}：共 {total} 项判据逐条取证"
+    # "证明了什么"：点出失败项的 goal（回退 text），最多 2 条，全过则给达标结论
+    def _lbl(r: dict[str, Any]) -> str:
+        g = (r.get("goal") or r.get("text") or "").strip()
+        return g.replace("测：", "") or r["id"]
+    if n_bad == 0 and n_pen == 0:
+        proves = f"{total} 项判据全部命中，该能力达标"
+    elif n_bad:
+        fails = [r for r in results if r["state"] == "failed"]
+        bads = "；".join(_lbl(r) for r in fails[:2])
+        if len(fails) > 2:
+            bads += f"…等{len(fails)}项"
+        proves = f"未达标项：{bads}（{n_bad}/{total} 挂）"
+    else:
+        proves = f"{n_ok} 项已过、{n_pen} 项待判，暂无失败"
+    return {"kind": "checklist", "tone": tone, "headline": head, "tested": tested, "proves": proves}
 
 
 def score_case(scene: Scene, results: list[dict[str, Any]]) -> dict[str, Any]:
