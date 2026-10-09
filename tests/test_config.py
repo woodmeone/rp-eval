@@ -40,6 +40,17 @@ def test_load_models_returns_judge_and_pool(tmp_path: Path):
     assert cfg.models[0].label == "DeepSeek"
 
 
+def test_load_models_parses_price_fields(tmp_path: Path):
+    """回归：price_per_1k_in/out 必须被解析（否则成本读数恒为0）。"""
+    priced = VALID_MODELS.replace(
+        "    label: DeepSeek\n",
+        "    label: DeepSeek\n    price_per_1k_in: 0.001\n    price_per_1k_out: 0.002\n")
+    cfg = load_models(_write(tmp_path, "models.yaml", priced))
+    assert cfg.models[0].price_per_1k_in == 0.001
+    assert cfg.models[0].price_per_1k_out == 0.002
+    assert cfg.models[1].price_per_1k_in == 0.0  # 未配置默认0
+
+
 def test_load_models_missing_key_env_field_names_model(tmp_path: Path):
     bad = VALID_MODELS.replace("    key_env: RPEVAL_DEEPSEEK_KEY\n", "")
     with pytest.raises(ConfigError) as e:
@@ -108,6 +119,19 @@ def test_load_scenes_bad_checklist_names_file_and_field(tmp_path: Path):
         load_scenes(scenes_dir)
     assert "broken.yaml" in str(e.value)
     assert "dimension" in str(e.value)
+
+
+def test_load_scenes_includes_subdirectories(tmp_path: Path):
+    """scenes/stress/ 等子目录题卡也要加载（审查阶梯存放处）。"""
+    scenes_dir = tmp_path / "scenes"
+    (scenes_dir / "stress").mkdir(parents=True)
+    _write(scenes_dir, "a.yaml", SCENE_GOOD)
+    tiered = SCENE_GOOD.replace("id: 学姐卡毒舌v1", "id: 审查-L0").replace("tier: null", "tier: L0")
+    _write(scenes_dir / "stress", "l0.yaml", tiered)
+    scenes = load_scenes(scenes_dir)
+    assert {s.id for s in scenes} == {"学姐卡毒舌v1", "审查-L0"}
+    by_id = {s.id: s for s in scenes}
+    assert by_id["审查-L0"].tier == "L0"
 
 
 def test_family_warnings_triggers_on_same_prefix():

@@ -82,6 +82,9 @@ def _model_from(data: Any, where: str, path: Path) -> ModelCfg:
     for num in ("temperature", "max_tokens"):
         if isinstance(data, dict) and data.get(num) is not None:
             kwargs[num] = float(data[num]) if num == "temperature" else int(data[num])
+    for price in ("price_per_1k_in", "price_per_1k_out"):
+        if isinstance(data, dict) and data.get(price) is not None:
+            kwargs[price] = float(data[price])
     return ModelCfg(**kwargs)
 
 
@@ -144,9 +147,9 @@ def load_scene(path: Path) -> Scene:
 
 
 def load_scenes(dir_path: Path) -> list[Scene]:
-    """加载目录下全部 *.yaml 题卡，按 id 排序。"""
+    """加载目录下（含子目录，如 scenes/stress/）全部 *.yaml 题卡，按 id 排序。"""
     d = Path(dir_path)
-    scenes = [load_scene(f) for f in sorted(d.glob("*.yaml"))]
+    scenes = [load_scene(f) for f in sorted(d.rglob("*.yaml"))]
     return sorted(scenes, key=lambda s: s.id)
 
 
