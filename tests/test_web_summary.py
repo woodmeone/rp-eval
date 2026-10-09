@@ -44,7 +44,7 @@ def _cfg(tmp_path: Path) -> Path:
 def test_index_shows_config_summary(tmp_path: Path):
     client = TestClient(create_app(config_dir=_cfg(tmp_path)))
     html = client.get("/").text
-    assert "配置摘要" in html
+    assert "当前配置" in html
     assert "模型 2" in html  # 被测池数量
     assert "题卡 1" in html
     assert "代打" in html and "文笔" in html  # 维度分布
