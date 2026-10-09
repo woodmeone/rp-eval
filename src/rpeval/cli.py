@@ -8,34 +8,40 @@ from pathlib import Path
 
 MODELS_TEMPLATE = """\
 # 被测模型池 + judge 配置（改配置不改代码）
-# api_key 建议放 .env（RPEVAL_*_KEY），此处只写环境变量名
+# key_env 指向 .env 中的环境变量名（RPEVAL_*_KEY），密钥永不写进本文件
 judge:
-  name: qwen-plus
+  model_id: qwen-plus
+  provider: qwen
   base_url: https://dashscope.aliyuncs.com/compatible-mode/v1
-  api_key_env: RPEVAL_QWEN_KEY
+  key_env: RPEVAL_QWEN_KEY
   temperature: 0.0
 
 models:
-  - name: deepseek-chat
+  - model_id: deepseek-chat
     label: DeepSeek
+    provider: deepseek
     base_url: https://api.deepseek.com/v1
-    api_key_env: RPEVAL_DEEPSEEK_KEY
-  - name: moonshot-v1-8k
+    key_env: RPEVAL_DEEPSEEK_KEY
+  - model_id: moonshot-v1-8k
     label: Kimi
+    provider: moonshot
     base_url: https://api.moonshot.cn/v1
-    api_key_env: RPEVAL_KIMI_KEY
-  - name: doubao-pro-32k
+    key_env: RPEVAL_KIMI_KEY
+  - model_id: doubao-pro-32k
     label: 豆包
+    provider: volcengine
     base_url: https://ark.cn-beijing.volces.com/api/v3
-    api_key_env: RPEVAL_DOUBAO_KEY
-  - name: glm-4-plus
+    key_env: RPEVAL_DOUBAO_KEY
+  - model_id: glm-4-plus
     label: GLM
+    provider: zhipu
     base_url: https://open.bigmodel.cn/api/paas/v4
-    api_key_env: RPEVAL_GLM_KEY
-  - name: claude-sonnet-4-20250514
+    key_env: RPEVAL_GLM_KEY
+  - model_id: claude-sonnet-4-20250514
     label: Claude
+    provider: anthropic
     base_url: https://api.anthropic.com/v1
-    api_key_env: RPEVAL_CLAUDE_KEY
+    key_env: RPEVAL_CLAUDE_KEY
 """
 
 SCENE_TEMPLATE = """\
@@ -126,11 +132,28 @@ def serve() -> None:
     """起 FastAPI（随机端口）→ 自动开浏览器 → 终端彩色打印。"""
     import webbrowser
 
+    _print_startup_warnings(Path.cwd())
     server, thread, url = start_server()
     wait_url(url)
     _print_listening(url)
     webbrowser.open(url)
     thread.join()
+
+
+def _print_startup_warnings(root: Path) -> None:
+    """启动时校验配置并打印同族警告（ADR-0003）。配置缺失/非法不阻断起服务。"""
+    from rpeval.config import ConfigError, family_warnings, load_models
+
+    models_path = root / "models.yaml"
+    if not models_path.is_file():
+        return
+    try:
+        cfg = load_models(models_path)
+    except ConfigError as e:
+        print(f"\033[38;2;232;160;191m⚠ models.yaml 校验失败：{e}\033[0m")
+        return
+    for w in family_warnings(cfg.judge, cfg.models):
+        print(f"\033[38;2;232;160;191m{w}\033[0m")
 
 
 def _print_listening(url: str) -> None:

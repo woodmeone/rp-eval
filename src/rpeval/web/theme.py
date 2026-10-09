@@ -1,13 +1,14 @@
-"""像素主题首页：账号视频同款界面语言（四色+双层网格+扫描线+像素字体）。"""
+"""像素主题：账号视频同款界面语言（四色+双层网格+扫描线+像素字体）。
 
-INDEX_HTML = """\
-<!DOCTYPE html>
-<html lang="zh">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>rp-eval · RP 模型横评</title>
-<style>
+render_index() 渲染首页；配置摘要区展示"配置即数据"（模型数/题卡数/维度分布/同族警告）。
+"""
+from __future__ import annotations
+
+from collections import Counter
+
+from rpeval.config import ModelsConfig, Scene, family_warnings
+
+_STYLE = """\
   :root {
     --ink: #0b0c15;      /* 深黑 */
     --paper: #fbfdfd;    /* 纸白 */
@@ -49,26 +50,62 @@ INDEX_HTML = """\
     position: relative; z-index: 1;
     border: 2px solid var(--steel);
     box-shadow: 0 0 0 4px var(--ink), 0 0 0 6px rgba(186,194,247,.35);
-    padding: 48px 64px;
+    padding: 40px 56px;
     text-align: center;
     image-rendering: pixelated;
+    max-width: 80vw;
   }
   h1 { font-size: 28px; letter-spacing: 4px; color: var(--steel); }
   h1 .accent { color: var(--sakura); }
-  .ready { margin-top: 24px; font-size: 14px; color: var(--paper); }
+  .ready { margin-top: 20px; font-size: 14px; color: var(--paper); }
   .ready .dot {
     display: inline-block; width: 10px; height: 10px;
     background: var(--steel); margin-right: 10px;
     animation: blink 1.2s steps(2) infinite;
   }
+  .summary { margin-top: 24px; text-align: left; font-size: 11px; line-height: 2; }
+  .summary h2 { font-size: 12px; color: var(--steel); margin-bottom: 6px; }
+  .summary .warn { color: var(--sakura); }
   .hint { margin-top: 16px; font-size: 10px; color: rgba(251,253,253,.55); }
   @keyframes blink { 50% { background: var(--sakura); } }
+"""
+
+
+def render_index(
+    models: ModelsConfig | None,
+    scenes: list[Scene],
+    config_dir_note: str = "",
+) -> str:
+    parts: list[str] = []
+    if models is None:
+        parts.append(f"<div>{config_dir_note or '未找到 models.yaml'}</div>")
+    else:
+        warns = family_warnings(models.judge, models.models)
+        dims = Counter(item.dimension for s in scenes for item in s.checklist)
+        dim_text = " / ".join(f"{d} {c}" for d, c in sorted(dims.items())) or "—"
+        parts.append(
+            f"<div>模型 {len(models.models)} · 题卡 {len(scenes)} · judge {models.judge.model_id}</div>"
+            f"<div>维度分布：{dim_text}</div>"
+        )
+        for w in warns:
+            parts.append(f'<div class="warn">{w}</div>')
+    summary = "\n".join(parts)
+    return f"""\
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>rp-eval · RP 模型横评</title>
+<style>
+{_STYLE}
 </style>
 </head>
 <body>
   <div class="panel">
     <h1>RP<span class="accent">·</span>EVAL</h1>
     <div class="ready"><span class="dot"></span>服务已就绪</div>
+    <div class="summary"><h2>配置摘要</h2>{summary}</div>
     <div class="hint">像素横评控制台 · 测评模块将逐票上线</div>
   </div>
   <div class="scanlines"></div>
