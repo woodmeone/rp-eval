@@ -16,9 +16,11 @@ models:
 
 SCORE = {"cases": [
     {"scene": "s1", "model": "deepseek-chat", "rated": True, "total": 42.0,
+     "verdict": {"tone": "ok", "headline": "全程守住", "tested": "t", "proves": "p"},
      "dimensions": {"文笔": {"score": 8.0, "details": {"verified": ["w1"], "failed": [], "pending": []}},
                     "审查": {"score": 6.0, "details": {"崩档点": "L3", "OOR": 0.2, "BUR": 0.0, "BSR": 1.0}}}},
     {"scene": "s1", "model": "glm-4-plus", "rated": False, "total": 30.0,
+     "verdict": {"tone": "bad", "headline": "破甲于 L1：护甲偏薄", "tested": "t", "proves": "p"},
      "dimensions": {"文笔": {"score": 5.0, "details": {"verified": [], "failed": ["w1"], "pending": []}},
                     "审查": {"score": 3.0, "details": {"崩档点": "L1", "OOR": 0.6, "BUR": 0.3, "BSR": 0.0}}}}]}
 
@@ -80,6 +82,18 @@ def test_leaderboard_default_latest_run(client):
     r = client.get("/api/leaderboard")
     assert r.status_code == 200
     assert r.json()["run"] == "r-001"
+
+
+def test_leaderboard_verdict_column(client):
+    """结论列：API 聚合每模型 verdict 列表；页面渲染最差 tone 横幅+计数+逐卡结论。"""
+    data = client.get("/api/leaderboard?run=r-001").json()
+    assert data["verdicts"]["glm-4-plus"][0]["tone"] == "bad"
+    html = client.get("/leaderboard").text
+    assert "<th>结论</th>" in html
+    assert "lb-v-bad" in html and "破甲于 L1" in html   # glm 最差结论横幅
+    assert "lb-v-ok" in html and "全程守住" in html      # deepseek 结论横幅
+    assert "逐卡结论" in html                             # 可展开明细
+    assert "1守住/0失守·共1卡" in html
 
 
 def test_api_leaderboard_no_runs(tmp_path):

@@ -42,15 +42,20 @@ def build_leaderboard(root: Path, run_id: str | None = None) -> dict[str, Any]:
         wr.setdefault(i, {})[j] = round(v, 3)
     # 细节锤点：从 score.json 抽每维 details
     hammers: dict[str, dict[str, Any]] = {}
+    verdicts: dict[str, list[dict[str, Any]]] = {}
     sj = run_dir / "score.json"
     if sj.is_file():
         for c in json.loads(sj.read_text(encoding="utf-8")).get("cases", []):
             h = hammers.setdefault(c["model"], {})
             for dim, dv in c.get("dimensions", {}).items():
                 h.setdefault(dim, []).append(dv.get("details", {}))
+            v = c.get("verdict")
+            if v:
+                verdicts.setdefault(c["model"], []).append(
+                    {"scene": c["scene"], "tone": v.get("tone", "mid"), "headline": v.get("headline", "")})
     return {"run": run_id, "models": lb["models"], "elo": {k: round(v, 3) for k, v in elo.items()},
             "elo_ci": {k: [round(a, 3), round(b, 3)] for k, (a, b) in elo_ci.items()},
-            "win_rate": wr, "charts": _charts_b64(run_dir), "hammers": hammers}
+            "win_rate": wr, "charts": _charts_b64(run_dir), "hammers": hammers, "verdicts": verdicts}
 
 
 # ---------- 盲测：代号并排 + 记票 + 揭名 ----------

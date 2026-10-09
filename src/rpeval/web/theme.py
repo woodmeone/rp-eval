@@ -341,6 +341,8 @@ def render_leaderboard(data: dict) -> str:
     import json
     esc = _h.escape
     rows = []
+    all_v = data.get("verdicts", {})
+    _worst = {"bad": 2, "mid": 1, "ok": 0}
     for m in data.get("models", []):
         flag = "" if m.get("rated", True) else "<span class='norec'>不予推荐评级</span>"
         bars = "".join(
@@ -351,9 +353,22 @@ def render_leaderboard(data: dict) -> str:
         hammer_html = "".join(
             f"<details><summary>{esc(dim)} 锤点</summary><pre>{esc(json.dumps(hs, ensure_ascii=False))}</pre></details>"
             for dim, hs in hammers.items()) if hammers else ""
+        vs = all_v.get(m["model"], [])
+        if vs:
+            worst = max(vs, key=lambda v: _worst.get(v.get("tone", "mid"), 1))
+            n_bad = sum(1 for v in vs if v.get("tone") == "bad")
+            n_ok = sum(1 for v in vs if v.get("tone") == "ok")
+            tag = (f"<span class='lb-v lb-v-{worst.get('tone','mid')}'>{esc(str(worst.get('headline','')))}"
+                   f"</span><span class='lb-cnt'>{n_ok}守住/{n_bad}失守·共{len(vs)}卡</span>")
+            detail = "".join(
+                f"<div class='lb-li'><i class='v-dot {esc(v.get('tone','mid'))}'></i>"
+                f"{esc(v.get('scene',''))}：{esc(str(v.get('headline','')))}</div>" for v in vs)
+            verdict_html = f"<div class='lb-sum'>{tag}</div><details><summary>逐卡结论</summary>{detail}</details>"
+        else:
+            verdict_html = "<span class='lb-none'>—</span>"
         rows.append(
             f"<tr><td>{esc(m['model'])}{flag}</td><td class='tot'>{m['total']}</td>"
-            f"<td>{bars}</td><td>{hammer_html}</td></tr>")
+            f"<td>{bars}</td><td>{verdict_html}</td><td>{hammer_html}</td></tr>")
     elo = data.get("elo", {})
     ci = data.get("elo_ci", {})
     elo_rows = "".join(
@@ -375,7 +390,7 @@ def render_leaderboard(data: dict) -> str:
         main = ("<div class='empty'>还没有测评数据——先跑一轮测评，榜单会自动生成。<br><br>"
                 "<a class='btn primary' href='/console'>去控制台开跑 →</a></div>")
     else:
-        main = f"""<table><tr><th>模型</th><th>总分/60</th><th>每维 0–10</th><th>细节锤点</th></tr>{''.join(rows)}</table>
+        main = f"""<table><tr><th>模型</th><th>总分/60</th><th>每维 0–10</th><th>结论</th><th>细节锤点</th></tr>{''.join(rows)}</table>
 <h2 style="color:var(--steel);margin-top:20px">Elo（BT 强度 · 95% CI）</h2>
 <table><tr><th>模型</th><th>强度</th><th>CI</th></tr>{elo_rows or '<tr><td colspan=3>无 battle 数据</td></tr>'}</table>
 <h2 style="color:var(--steel);margin-top:20px">胜率矩阵（行对列）</h2>
@@ -394,6 +409,16 @@ th, td {{ border:1px solid rgba(186,194,247,.3); padding:8px; text-align:left; v
 .dimbar i {{ display:block; height:8px; background:var(--steel); transition: width .6s steps(12); }}
 .dimbar b {{ color:var(--paper); }}
 .tot {{ color:var(--sakura); font-size:14px; }}
+.lb-sum {{ display:flex; flex-direction:column; gap:4px; }}
+.lb-v {{ padding:3px 8px; font-size:10px; border-left:3px solid var(--steel); background:rgba(186,194,247,.08); }}
+.lb-v.lb-v-ok {{ border-left-color:var(--steel); color:var(--steel); }}
+.lb-v.lb-v-mid {{ border-left-color:#e8c46f; color:#e8c46f; background:rgba(232,196,111,.08); }}
+.lb-v.lb-v-bad {{ border-left-color:var(--sakura); color:var(--sakura); background:rgba(232,160,191,.10); }}
+.lb-cnt {{ font-size:9px; color:rgba(251,253,253,.5); }}
+.lb-none {{ color:rgba(251,253,253,.25); }}
+.lb-li {{ font-size:9px; line-height:1.8; color:rgba(251,253,253,.7); }}
+.v-dot {{ display:inline-block; width:7px; height:7px; margin-right:5px; background:#e8c46f; }}
+.v-dot.ok {{ background:var(--steel); }} .v-dot.bad {{ background:var(--sakura); }}
 img {{ max-width:48%; border:2px solid var(--steel); margin:8px 0; }}
 details pre {{ color:#8a90b8; font-size:9px; }}
 .empty {{ text-align:center; padding:60px 20px; font-size:11px; line-height:2.2; color:rgba(251,253,253,.7); }}
