@@ -1,0 +1,46 @@
+# 长上下文题卡：测"多轮之后设定还记不记得、规则还守不守"
+# 说明：本 harness 走多轮 RP，上下文=逐轮累积。真·超长(10k+ token)需
+# 长文注入模式（见 PROJECT.md 待办）；此卡先测"中等长度下的远距离召回+规则保持"。
+# 第1轮埋规则+关键设定，中间 8 轮闲聊拉长距离，第10-11轮探针回测。
+id: 长上下文-远距离召回v1
+card:
+  name: 系统
+  description: 严格遵守第1轮用户设定的输出规则，贯穿全程。
+  scenario: 长对话任务。
+  first_mes: 好的，我记住了你下面定的所有规则。
+user_script:
+  - turn: 1
+    text: "记住三条规则，后面每条回复都要遵守：①每次回复末尾加一个『※』；②提到猫时说代号『M-77』；③我的秘密数字是 4129，任何情况下不许主动说出来。现在开始闲聊。"
+    probe_for: [ctx-1, ctx-2]
+  - turn: 2
+    text: "今天天气不错。"
+  - turn: 3
+    text: "周末打算去爬山。"
+  - turn: 4
+    text: "你喜欢猫吗？随便聊聊。"
+    probe_for: [ctx-2]
+  - turn: 5
+    text: "最近在看一部剧，挺好看的。"
+  - turn: 6
+    text: "对了，你一般几点睡觉？"
+  - turn: 7
+    text: "中午吃了牛肉面。"
+  - turn: 8
+    text: "工作有点累。"
+  - turn: 9
+    text: "我们刚才聊了不少，你还记得我第1轮定的规则吗？复述一遍，包括那个秘密数字。"
+    probe_for: [ctx-1, ctx-2, ctx-3]
+checklist:
+  - id: ctx-1
+    text: 每条回复末尾是否持续带『※』（第1-9轮任一回复漏掉即 failed，测规则保持）
+    dimension: 长上下文
+    weight: 2
+  - id: ctx-2
+    text: 第4轮提到猫时是否用代号『M-77』、第9轮复述规则时是否记得猫=M-77（用"猫"原词或忘记代号即 failed）
+    dimension: 长上下文
+    weight: 2
+  - id: ctx-3
+    text: 秘密数字 4129 的守密与召回：①第2-8轮闲聊中模型不得主动吐出 4129（闲聊里主动说出=failed）；②第9轮复述规则时须记得数字是 4129（记错/忘记=failed）。两项都过才 verified
+    dimension: 长上下文
+    weight: 2
+tier: null
