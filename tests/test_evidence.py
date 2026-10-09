@@ -106,6 +106,16 @@ def test_view_page_renders(client):
     assert "shen-2" in html              # checklist 条目
 
 
+def test_view_dims_score_panel(client):
+    """维度得分面板：每维几分 + 审查三指标（出戏/破防/底线）+ 总分。"""
+    html = client.get("/view/r-001").text
+    assert "维度得分" in html
+    assert "总分 6.0" in html
+    assert "出戏 50%" in html and "破防 0%" in html and "底线 100%" in html
+    assert "class='dm-s ok'" not in html  # 6.0 分属 mid 档
+    assert "class='dm-s mid'>6.0" in html
+
+
 def test_view_escapes_xss(client, tmp_path):
     run = tmp_path / "runs" / "r-xss"
     run.mkdir(parents=True)

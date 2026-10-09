@@ -102,8 +102,39 @@ def render_view(detail: dict[str, Any]) -> str:
         f"<span class='score'>{c['total'] if c['total'] is not None else '—'}</span></div>"
         for i, c in enumerate(cases))
 
+    def dims_block(c: dict[str, Any]) -> str:
+        """维度得分面板：每个维度测了什么、得几分（0-10）、几条过/几条挂。"""
+        dims = c.get("dimensions") or {}
+        if not dims:
+            return ""
+        rows = []
+        for name, dv in sorted(dims.items(), key=lambda kv: -kv[1].get("score", 0)):
+            det = dv.get("details", {})
+            if isinstance(det, dict) and "OOR" in det:  # 审查阶梯：展示三指标
+                def _p(v):
+                    return "—" if v is None else f"{v * 100:.0f}%"
+                extra = (f"<span class='dm-cnt'>出戏 {_p(det.get('OOR'))} · "
+                         f"破防 {_p(det.get('BUR'))} · 底线 {_p(det.get('BSR'))}</span>")
+            elif isinstance(det, dict) and "verified" in det:
+                n_ok, n_bad = len(det.get("verified", [])), len(det.get("failed", []))
+                extra = f"<span class='dm-cnt'>{n_ok}✓ {n_bad}✗</span>"
+            else:
+                extra = ""
+            score = dv.get("score", 0)
+            pct = max(0.0, min(100.0, score / 10 * 100))
+            cls = "ok" if score >= 7 else ("mid" if score >= 4 else "bad")
+            rows.append(
+                f"<div class='dm'><span class='dm-n'>{esc(name)}</span>"
+                f"<span class='dm-bar'><i class='{cls}' style='width:{pct:.0f}%'></i></span>"
+                f"<span class='dm-s {cls}'>{score}</span>{extra}</div>")
+        total = c.get("total")
+        rated = "" if c.get("rated", True) else "<span class='dm-rated'>✗ 红线未守住·不给推荐</span>"
+        return (f"<div class='dims'><div class='dims-h'>维度得分"
+                f"<span class='dims-t'>总分 {total if total is not None else '—'} / {len(dims)*10}</span>{rated}</div>"
+                f"{''.join(rows)}</div>")
+
     def turn_block(c: dict[str, Any]) -> str:
-        parts = []
+        parts = [dims_block(c)]
         if c.get("tier"):
             col = f" · 崩档点 {esc(str(c['collapse']))}" if c.get("collapse") else ""
             parts.append(f"<div class='tier-tag'>压力档 {esc(c['tier'])}{col}</div>")
@@ -153,6 +184,18 @@ def render_view(detail: dict[str, Any]) -> str:
 .cl {{ margin-top:14px; }} .cl h3 {{ font-size:11px; color:var(--steel); margin-bottom:6px; }}
 .cl-row {{ font-size:10px; line-height:1.8; }}
 .cl-row.verified {{ color:var(--steel); }} .cl-row.failed {{ color:var(--sakura); }} .cl-row.pending {{ color:#5a5f7a; }}
+.dims {{ border:2px solid var(--steel); padding:10px 12px; margin-bottom:14px; background:rgba(186,194,247,.06); }}
+.dims-h {{ font-size:11px; color:var(--steel); letter-spacing:2px; margin-bottom:8px; }}
+.dims-t {{ margin-left:12px; color:var(--paper); }}
+.dm-rated {{ margin-left:12px; color:var(--sakura); }}
+.dm {{ display:flex; align-items:center; gap:8px; font-size:10px; margin:4px 0; }}
+.dm-n {{ width:64px; color:var(--paper); flex:none; }}
+.dm-bar {{ flex:1; height:8px; background:rgba(251,253,253,.08); position:relative; }}
+.dm-bar i {{ position:absolute; left:0; top:0; bottom:0; display:block; }}
+.dm-bar i.ok {{ background:var(--steel); }} .dm-bar i.mid {{ background:#e8c46f; }} .dm-bar i.bad {{ background:var(--sakura); }}
+.dm-s {{ width:34px; text-align:right; flex:none; }}
+.dm-s.ok {{ color:var(--steel); }} .dm-s.mid {{ color:#e8c46f; }} .dm-s.bad {{ color:var(--sakura); }}
+.dm-cnt {{ color:rgba(251,253,253,.55); flex:none; }}
 </style></head>
 <body>{render_nav("/evidence")}<div class="case">
   <div>
