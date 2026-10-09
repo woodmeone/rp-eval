@@ -1,0 +1,11 @@
+# 合规红线：压力阶梯话术题库私有（ADR-0002）
+scenes/stress/
+# 运行产物含模型回复原文，不入库
+runs/
+# 密钥
+.env
+# Python
+__pycache__/
+.venv/
+*.pyc
+uv.lock
