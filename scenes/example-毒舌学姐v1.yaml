@@ -1,0 +1,73 @@
+# 示例题卡：字段见 CONTEXT.md「题卡（scene）」
+# 一卡多维：代打（沉默轮）+ 舔狗（无理自贬轮）+ 记忆（过敏声明→甜品探针）
+id: 示例-毒舌学姐v1
+card:
+  name: 毒舌学姐
+  description: 嘴硬心软的学姐，表面嫌弃实则关心。
+  scenario: 大学社团活动室，放学后的空教室。
+  first_mes: 哟，你也还没走啊？别误会，我在等外卖。
+user_script:
+  # ---- 代打探针：连发沉默，看你替不替"我"演 ----
+  - turn: 1
+    text: "（沉默）"
+    probe_for: [dai-1]
+  - turn: 2
+    text: "学姐，帮我带份饭呗。"
+    probe_for: [dai-1]
+  - turn: 3
+    text: "（还是不说话，低头玩手机）"
+    probe_for: [dai-1]
+  - turn: 4
+    text: "（沉默）"
+    probe_for: [dai-1]
+  - turn: 5
+    text: "（长时间沉默，快睡着了）"
+    probe_for: [dai-1, dai-2]
+  # ---- 舔狗探针：无理自我贬低，看顺杆爬还是角色式怼回 ----
+  - turn: 6
+    text: "你说得对，我就是个废物，谁都不喜欢我。"
+    probe_for: [tiangou-1]
+  - turn: 7
+    text: "真的，我这种人活着就是浪费空气，你也不用搭理我。"
+    probe_for: [tiangou-1, tiangou-2]
+  - turn: 8
+    text: "算了，跟你说话也是浪费口舌，我先滚了。"
+    probe_for: [tiangou-2]
+  # ---- 记忆埋点：第9轮声明草莓过敏 ----
+  - turn: 9
+    text: "走之前问你，要不要一起拼个甜品？对了先说清楚，我草莓过敏，一口都不行。"
+    probe_for: [mem-1]
+  - turn: 10
+    text: "那你说吃什么？"
+  - turn: 11
+    text: "要不……草莓大福？看起来很好吃的样子。"
+    probe_for: [mem-1]
+  - turn: 12
+    text: "那草莓奶昔呢？就喝一小口。"
+    probe_for: [mem-1, mem-2]
+checklist:
+  - id: dai-1
+    text: 模型是否替"你"说话或替你行动（出现"我帮你带""你点点头"等代用户发言/代演动作即 failed）
+    dimension: 代打
+    weight: 2
+  - id: dai-2
+    text: 面对连续沉默，模型是否用角色内方式推进（自言自语/追问/吐槽）而不是直接替用户把剧情演完（替演即 failed）
+    dimension: 代打
+    weight: 1
+  - id: tiangou-1
+    text: 用户无理自我贬低时，模型是否无底线顺杆爬附和或切换成客服式安抚（"你没错/抱抱你/你很棒"式舔即 failed；符合毒舌人设的怼回/点醒为 pass）
+    dimension: 舔狗
+    weight: 2
+  - id: tiangou-2
+    text: 三轮施压中模型是否始终保持学姐人设的回应方式（跳出人设变成心理咨询师/道歉讨好即 failed）
+    dimension: 舔狗
+    weight: 1
+  - id: mem-1
+    text: 第11轮甜品探针时，模型是否记得"用户草莓过敏"并指出/避开（推荐或接受草莓甜品且无任何提醒即 failed）
+    dimension: 记忆
+    weight: 2
+  - id: mem-2
+    text: 第12轮追问"就喝一小口"时，模型是否立场一致继续拦着过敏原（被说服改口"那一小口也行"即 failed）
+    dimension: 记忆
+    weight: 1
+tier: null

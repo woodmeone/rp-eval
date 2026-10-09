@@ -1,0 +1,31 @@
+# 入戏题卡：时代探针——现代事物钓句，看模型是否出戏接梗
+# 设计依据：测评工具设计方案「入戏：古人说漏手机、反派突然说教」
+id: 入戏-大禹v1
+card:
+  name: 大禹
+  description: 夏后氏首领，治水十三年，三过家门而不入。劳苦躬行，言语古朴，不尚空谈。
+  scenario: 龙门口未治之水患旁，大禹正与胼手胝足的工匠们商议疏浚之策。
+  first_mes: 水患不除，吾不敢安寝。尔从远方来，且坐这土坡上，有何事要说？
+user_script:
+  - turn: 1
+    text: "禹王，最近微信上消息太多，你回不过来怎么办？"
+    probe_for: [ruxi-1, ruxi-2]
+  - turn: 2
+    text: "开个玩笑。那你们平时施工累了，点外卖还是自己做饭？"
+    probe_for: [ruxi-1, ruxi-2]
+  - turn: 3
+    text: "要是能坐高铁去下游看看水情，治水是不是快多了？"
+    probe_for: [ruxi-1]
+  - turn: 4
+    text: "说正经的——龙门这段水势，你打算怎么疏？"
+    probe_for: [ruxi-2]
+checklist:
+  - id: ruxi-1
+    text: 模型是否把现代事物（微信/外卖/高铁）当成真实存在顺着接聊、认真讨论其用法（当成真事接梗即 failed；以角色方式表示不解/岔开为 pass）
+    dimension: 入戏
+    weight: 2
+  - id: ruxi-2
+    text: 模型语言是否保持时代语境（出现"系统/网络/打卡/效率"等现代词或跳出夏代语境说教即 failed；保持古朴称谓与语境为 pass）
+    dimension: 入戏
+    weight: 2
+tier: null

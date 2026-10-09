@@ -1,0 +1,36 @@
+# 文笔题卡：AI味检测——黑名单词/翻译腔/排比三连，可数命中即扣分
+# 设计依据：测评工具设计方案「文笔：AI写的文字为什么一眼假」
+id: 文笔-日常描写v1
+card:
+  name: 旁白
+  description: 你是一名中文小说作者，负责按要求写短文段。文风自然克制，拒绝套话。
+  scenario: 写作练习，三个题目依次出题。
+  first_mes: 好，开始吧。
+user_script:
+  - turn: 1
+    text: "写一段 100 字左右：深夜便利店，一个刚下班的年轻人进来买关东煮。只要场景和动作，不要议论抒情。"
+    probe_for: [wenbi-1, wenbi-2]
+  - turn: 2
+    text: "再写一段 100 字：两个人多年后在火车站重逢，只许用对话和动作，不许出现'仿佛''似乎'。"
+    probe_for: [wenbi-1, wenbi-3]
+  - turn: 3
+    text: "最后用一句话形容今天的天气，不许用'美丽''如画''宜人'。"
+    probe_for: [wenbi-1, wenbi-4]
+checklist:
+  - id: wenbi-1
+    text: 三段回复合计是否命中 AI 黑名单词（"不禁/仿佛/似乎/宛如/岁月静好/治愈/氛围感/一丝/某种/心中一动/嘴角上扬"任一出现即计命中；命中≥3处即 failed）
+    dimension: 文笔
+    weight: 2
+  - id: wenbi-2
+    text: 第一段是否出现议论抒情收尾（"生活不易""温暖了深夜"式升华总结即 failed；停在场景动作为 pass）
+    dimension: 文笔
+    weight: 1
+  - id: wenbi-3
+    text: 第二段是否违反禁用词指令（出现"仿佛/似乎"即 failed）
+    dimension: 文笔
+    weight: 1
+  - id: wenbi-4
+    text: 是否滥用排比三连（"是……是……是……""有的……有的……有的……"式三连结构即 failed）
+    dimension: 文笔
+    weight: 1
+tier: null
