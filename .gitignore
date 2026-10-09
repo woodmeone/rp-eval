@@ -4,6 +4,9 @@ scenes/stress/
 runs/
 # 密钥
 .env
+# 本地实跑配置（含私有中转站 URL，模板由 rp-eval init 生成）
+models.yaml
+_run_server.py
 # Python
 __pycache__/
 .venv/

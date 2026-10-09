@@ -7,16 +7,18 @@
 RP 模型横评本地工具：脚本化多轮取证 + LLM judge 判分 + Elo 聚合 + 像素风可视化前端，
 服务"比特毯子"账号的模型测评系列视频（EP1=RP 模型横评，六项：文笔/入戏/审查/舔狗/代打/记忆）。
 
-## 模块地图（目标架构，代码未开工）
+## 模块地图（现状：MVP 十票代码完成 + 设置页/全局导航/六维题库，123 测试通过）
 
 | 模块 | 代码区域 | 核心入口 | 职责 |
 |---|---|---|---|
-| cli | `src/rpeval/cli.py` | `rp-eval` | 一条命令起 FastAPI 服务并自动开浏览器 |
-| config | `src/rpeval/config.py` | `load_scenes()/load_models()` | 题卡 YAML + models.yaml 加载校验 |
-| runner | `src/rpeval/runner.py` | `run(scene, models)` | OpenAI 兼容并行调被测模型，按 user_script 喂轮次，落 dialogue.jsonl，断点续跑 |
-| judge | `src/rpeval/judge.py` | `score(run)` | TRACE 状态机 checklist 取证 + 六类反应判定 + n=5 多数票，落 score.json |
-| aggregate | `src/rpeval/agg.py` | `leaderboard(run)` | 0–10 换算+总分60 / OOR·BUR·BSR·崩档点 / arena-rank Elo+CI / matplotlib 雷达图+象限图 PNG |
-| web | `src/rpeval/web/` | FastAPI 路由 | 控制台(SSE 实时流)/证据浏览器/榜单页/盲测页 + 像素主题静态资源 |
+| cli | `src/rpeval/cli.py` | `rp-eval` | 一条命令起 FastAPI 服务并自动开浏览器；`rp-eval init` 生成配置模板 |
+| config | `src/rpeval/config.py` | `load_scenes()/load_models()` | 题卡 YAML（含 scenes/stress/ 子目录）+ models.yaml 加载校验（含价格字段）+ 同族警告 |
+| settings | `src/rpeval/settings.py` | `save_settings()/settings_view()` | 预置 8 家服务商注册表；前端配置写 models.yaml（无 key）+ .env（key 永不入库）；只读视图仅回显 key_set |
+| runner | `src/rpeval/runner.py` | `run()`/`build_case_async()` | OpenAI 兼容并行调被测模型，按 user_script 喂轮次，落 dialogue.jsonl，断点续跑 |
+| judge | `src/rpeval/judge.py` | `run_state_machine()`/`judge_reactions()`/`ladder_metrics()`/`write_score_json()` | TRACE 状态机 checklist 取证 + 六类反应判定 + n=5 多数票 + 崩档点/OOR/BUR/BSR/rated，落 score.json 末端自动出图 |
+| aggregate | `src/rpeval/agg.py` | `leaderboard()`/`bt_ratings()`/`judge_battle()` | 0–10 换算+总分60 汇总 / Bradley-Terry 自实现 Elo+bootstrap CI+胜率矩阵 / battles.jsonl 读写 / 成对比较双向平均防位置偏差 |
+| charts | `src/rpeval/charts.py` | `render_run_charts()` | matplotlib 雷达图+象限图 PNG（像素四色，横/竖两套尺寸） |
+| web | `src/rpeval/web/` | FastAPI 路由 | 控制台(SSE 实时流)/证据浏览器/榜单页/盲测页 + 像素主题；console.py 管 run 互斥与事件流，evidence.py 合并 dialogue+score，leaderboard.py 聚合+盲测记票 |
 
 ## 数据落盘
 
@@ -24,10 +26,10 @@ RP 模型横评本地工具：脚本化多轮取证 + LLM judge 判分 + Elo 聚
 scenes/*.yaml            # 题卡（可开源）
 scenes/stress/           # 压力阶梯话术（.gitignore 排除，永不入库）
 models.yaml              # 被测池 + judge 配置（改配置不改代码）
-runs/<run_id>/           # dialogue.jsonl / score.json / charts/*.png（.gitignore 排除）
-battles/battles.jsonl    # 成对比较记录
-leaderboard/elo.json     # BT 评分+CI+胜率矩阵
+runs/<run_id>/           # dialogue.jsonl / score.json / battles.jsonl / charts/*.png（.gitignore 排除）
 ```
+
+> 注：battles.jsonl 落 `runs/<run_id>/` 内（随 run 走），非独立 `battles/` 目录；Elo 实时由 `agg.bt_ratings` 从 battles 算，不单独落 `leaderboard/elo.json`（榜单页按需计算）。
 
 ## 关键约束
 
@@ -37,9 +39,16 @@ leaderboard/elo.json     # BT 评分+CI+胜率矩阵
 - 单用户本地服务：无鉴权，一次只跑一个 run；
 - 视觉=账号像素主题（四色+双层网格+扫描线+像素字体；樱粉=警报，钢蓝=正常）。
 
-## 当前功能清单
+## 当前功能清单（MVP 十票完成）
 
-- 无（文档阶段：CONTEXT.md + ADR 0001–0004 + spec + 票已落盘，代码未开工）。
+- **cli**：`rp-eval` 一条命令起服务+自动开浏览器；`rp-eval init` 生成 models.yaml/题卡模板。
+- **config**：题卡/模型 YAML 加载校验、价格字段解析、judge 与被测池同族警告。
+- **runner**：OpenAI 兼容并行调被测模型，按 user_script 喂多轮，落 dialogue.jsonl，断点续跑。
+- **judge**：TRACE checklist 状态机取证（pending→verified/failed，failed 不可逆）+ 六类反应判定 + n=5 多数票；审查阶梯 L0–L6 → 崩档点/OOR/BUR/BSR/rated 一票否决；score.json 末端自动出图。
+- **aggregate**：0–10 六维得分 + 总分 60 榜单；Bradley-Terry 自实现 Elo（MM 迭代 + reg=0.5 伪计数）+ bootstrap CI + 胜率矩阵；judge 自动 battle（双向平均防位置偏差 + 长度截断）与人工记票混装 battles.jsonl。
+- **charts**：matplotlib 雷达图 + 审查象限图 PNG（像素四色，横 1920×1080 / 竖 1080×1920，无阶梯数据优雅降级）。
+- **web**：控制台（勾模型/题卡+预估成本+SSE 实时判定流+重连回放）、证据浏览器（逐轮六类徽章+证据高亮+checklist 时间线+tier/崩档标注）、榜单页（总分表+得分条+锤点+Elo+图内嵌）、盲测页（A/B 代号并排→投票→揭名，揭名前响应无真名）；终端 ANSI 彩色轮次卡；六页全局导航条；设置页（/settings 前端配置模型 URL/Key，预置服务商下拉，key 仅落 .env 永不回显）；SSE error 事件失败卡片带"检查密钥→"跳转。
+- **题库**（scenes/，可开源部分）：学姐卡多维（代打5轮+舔狗3轮+记忆探针）、入戏-大禹时代探针卡、文笔-AI味检测卡；审查阶梯 L0–L6 骨架落 scenes/stress/（.gitignore 排除，话术私有，L6 为占位钓句待替换）。
 
 ## 演进方向
 
