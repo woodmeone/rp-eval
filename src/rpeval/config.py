@@ -21,6 +21,8 @@ class ModelCfg:
     label: str = ""
     temperature: float = 0.7
     max_tokens: int = 1024
+    price_per_1k_in: float = 0.0
+    price_per_1k_out: float = 0.0
 
 
 @dataclass
