@@ -127,6 +127,37 @@ def render_view(detail: dict[str, Any]) -> str:
         f"<button class='vf vf-bad' data-f='bad'>破甲/失守 {tone_counts['bad']}</button>"
         "</div>")
 
+    def summary_matrix() -> str:
+        """模型×场景结论热力图：格子=总分+tone配色，点击跳到对应 case（≥2模型×≥2场景才出）。"""
+        models: list[str] = []
+        scenes: list[str] = []
+        cell_of: dict[tuple[str, str], tuple[int, dict[str, Any]]] = {}
+        for i, c in enumerate(cases):
+            if c["model"] not in models:
+                models.append(c["model"])
+            if c["scene"] not in scenes:
+                scenes.append(c["scene"])
+            cell_of[(c["model"], c["scene"])] = (i, c)
+        if len(models) < 2 or len(scenes) < 2:
+            return ""
+        head = "".join(f"<th>{esc(m)}</th>" for m in models)
+        rows = []
+        for sc in scenes:
+            tds = []
+            for m in models:
+                hit = cell_of.get((m, sc))
+                if hit is None:
+                    tds.append("<td class='mx empty'>—</td>")
+                else:
+                    i, c = hit
+                    tone = (c.get("verdict") or {}).get("tone", "mid")
+                    tds.append(f"<td class='mx mx-{tone}' data-i='{i}' title='点击查看证据'>"
+                               f"{c['total'] if c['total'] is not None else '·'}</td>")
+            rows.append(f"<tr><th class='mx-sc'>{esc(sc)}</th>{''.join(tds)}</tr>")
+        return (f"<div class='mxwrap'><div class='mx-h'>结论总览 · 行=题卡 列=模型 色=判定 点=跳转</div>"
+                f"<table class='mx-grid'><thead><tr><th></th>{head}</tr></thead>"
+                f"<tbody>{''.join(rows)}</tbody></table></div>")
+
     def dims_block(c: dict[str, Any]) -> str:
         """维度得分面板：每个维度测了什么、得几分（0-10）、几条过/几条挂。"""
         dims = c.get("dimensions") or {}
@@ -276,8 +307,18 @@ def render_view(detail: dict[str, Any]) -> str:
 .scene-n {{ float:right; color:rgba(251,253,253,.45); font-size:9px; }}
 .scene-bad {{ color:var(--sakura); }}
 .case-item {{ padding-left:14px; }}
+.mxwrap {{ width:94vw; margin:8px auto 14px; }}
+.mx-h {{ font-size:10px; color:var(--steel); letter-spacing:1px; margin-bottom:6px; }}
+.mx-grid {{ border-collapse:collapse; font-size:10px; }}
+.mx-grid th {{ color:var(--paper); font-weight:normal; padding:4px 8px; text-align:left; max-width:120px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }}
+.mx-grid thead th {{ color:var(--steel); }}
+.mx-sc {{ color:var(--paper); }}
+td.mx {{ border:2px solid #0b0c15; padding:6px 10px; text-align:center; cursor:pointer; min-width:44px; background:rgba(251,253,253,.06); color:var(--paper); }}
+td.mx.mx-ok {{ background:rgba(186,194,247,.28); }} td.mx.mx-mid {{ background:rgba(232,196,111,.24); }} td.mx.mx-bad {{ background:rgba(232,160,191,.30); color:var(--sakura); }}
+td.mx.empty {{ color:rgba(251,253,253,.25); cursor:default; background:transparent; }}
+td.mx:not(.empty):hover {{ outline:2px solid var(--paper); }}
 </style></head>
-<body>{render_nav("/evidence")}<div class="case">
+<body>{render_nav("/evidence")}{summary_matrix()}<div class="case">
   <div>
     <h2 style="font-size:12px;color:var(--paper);margin:10px 0">证据浏览器 · {esc(detail.get('run_id',''))}</h2>
     {case_filter}
@@ -285,12 +326,15 @@ def render_view(detail: dict[str, Any]) -> str:
   <div>{panes}</div>
 </div><div class="scanlines"></div>
 <script>
-document.querySelectorAll('.case-item').forEach(el=>el.addEventListener('click',()=>{{
+function selectCase(i){{
   document.querySelectorAll('.case-item').forEach(x=>x.classList.remove('active'));
-  el.classList.add('active');
-  const i=el.dataset.i;
-  document.querySelectorAll('.pane').forEach(p=>p.style.display = p.dataset.i===i?'block':'none');
-}}));
+  const el=document.querySelector(".case-item[data-i='"+i+"']");
+  if(el) el.classList.add('active');
+  document.querySelectorAll('.pane').forEach(p=>p.style.display = p.dataset.i===String(i)?'block':'none');
+  if(el) el.scrollIntoView({{block:'nearest'}});
+}}
+document.querySelectorAll('.case-item').forEach(el=>el.addEventListener('click',()=>selectCase(el.dataset.i)));
+document.querySelectorAll('td.mx[data-i]').forEach(td=>td.addEventListener('click',()=>selectCase(td.dataset.i)));
 // 结论筛选：按 tone 隐藏左列 case，并把可见的第一个 pane 切出来
 function applyFilter(f){{
   let firstVisible=null;

@@ -199,6 +199,31 @@ def test_view_scene_grouping(client, tmp_path):
     assert "m1 × 场景甲" not in html
 
 
+def test_view_summary_matrix(client, tmp_path):
+    """≥2模型×≥2场景：页顶出结论热力图，格子带 tone 配色+data-i 跳转；单模型 run 不出。"""
+    run = tmp_path / "runs" / "r-mx"
+    run.mkdir(parents=True)
+    dlg = [
+        {"scene": "场景甲", "model": "m1", "turns": [{"turn_no": 1, "user": "u", "model_reply": "r", "judge": {}, "meta": {}}]},
+        {"scene": "场景甲", "model": "m2", "turns": [{"turn_no": 1, "user": "u", "model_reply": "r", "judge": {}, "meta": {}}]},
+        {"scene": "场景乙", "model": "m1", "turns": [{"turn_no": 1, "user": "u", "model_reply": "r", "judge": {}, "meta": {}}]},
+    ]
+    score = {"cases": [
+        {"scene": "场景甲", "model": "m1", "total": 5, "verdict": {"tone": "bad", "headline": "h", "tested": "t", "proves": "p"}},
+        {"scene": "场景甲", "model": "m2", "total": 8, "verdict": {"tone": "ok", "headline": "h", "tested": "t", "proves": "p"}},
+        {"scene": "场景乙", "model": "m1", "total": 9, "verdict": {"tone": "ok", "headline": "h", "tested": "t", "proves": "p"}},
+    ]}
+    (run / "dialogue.jsonl").write_text("\n".join(json.dumps(c, ensure_ascii=False) for c in dlg), encoding="utf-8")
+    (run / "score.json").write_text(json.dumps(score, ensure_ascii=False), encoding="utf-8")
+    html = client.get("/view/r-mx").text
+    assert "结论总览" in html
+    assert "mx-bad" in html and "mx-ok" in html       # tone 配色格
+    assert "mx empty" in html                          # m2×场景乙 缺测格
+    assert "td class='mx mx-bad' data-i='0'" in html   # 格子带跳转索引
+    # 单模型 run（r-001）不出热力图
+    assert "结论总览" not in client.get("/view/r-001").text
+
+
 def test_view_escapes_xss(client, tmp_path):
     run = tmp_path / "runs" / "r-xss"
     run.mkdir(parents=True)
