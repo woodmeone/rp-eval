@@ -12,3 +12,6 @@ __pycache__/
 .venv/
 *.pyc
 uv.lock
+
+# Discord 社区原始资料，仅本地研究用，永不入库
+research/
