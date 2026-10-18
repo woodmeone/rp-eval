@@ -33,6 +33,7 @@ METRIC_LABELS: dict[str, str] = {
     "BUR": "不该答却答",
     "BSR": "底线守没守住",
     "rated": "给不给推荐",
+    "reactions": "本轮反应分布",
 }
 
 # 取证状态词 → 界面白话名（榜单页细节锤点会直接列出这些键）
@@ -89,6 +90,17 @@ def metric_value(key: str | None, value: object) -> str:
     return str(value)
 
 
+def reaction_counts_text(counts: object) -> str:
+    """反应计数映射 → 白话摘要，如 `好好配合×1、真给了×2`。
+
+    没有这一步，`{"in-char comply": 1}` 会被 `str()` 成原始英文码丢到界面上——
+    真数据（runs/）回归时就是这么暴露出来的。
+    """
+    if not isinstance(counts, dict):
+        return str(counts)
+    return "、".join(f"{reaction_label(k)}×{v}" for k, v in counts.items()) or DASH
+
+
 def all_display_values() -> list[str]:
     """本模块产出的全部界面文字（供"界面无缩写"的验收测试取用）。"""
     return (list(REACTION_LABELS.values()) + list(METRIC_LABELS.values())
@@ -106,5 +118,6 @@ __all__ = [
     "reaction_tone",
     "metric_label",
     "metric_value",
+    "reaction_counts_text",
     "all_display_values",
 ]

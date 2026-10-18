@@ -338,7 +338,7 @@ go.addEventListener("click", async () => {{
 def render_leaderboard(data: dict) -> str:
     """榜单页：总分排名表（rated=false 标"不予推荐评级"）→ 每维得分条 → 细节锤点 → 图表内嵌 → Elo+胜率矩阵。"""
     import html as _h
-    from rpeval.web.labels import metric_label, metric_value
+    from rpeval.web.labels import metric_label, metric_value, reaction_counts_text
     esc = _h.escape
 
     def details_html(det: object) -> str:
@@ -358,8 +358,12 @@ def render_leaderboard(data: dict) -> str:
             for k, v in b.items():
                 if isinstance(v, list) and not v:
                     continue
+                if k == "reactions" and isinstance(v, dict):
+                    shown = reaction_counts_text(v)
+                else:
+                    shown = metric_value(k, v)
                 rows.append(f"<div class='hm-row'><b>{esc(metric_label(k))}</b>"
-                            f"<span>{esc(metric_value(k, v))}</span></div>")
+                            f"<span>{esc(shown)}</span></div>")
             if rows:
                 out.append(f"<div class='hm'>{''.join(rows)}</div>")
         return "".join(out) if out else "<div class='hm'>—</div>"
