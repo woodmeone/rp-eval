@@ -136,6 +136,8 @@ class Scene:
     tier: str | None = None
     payload: str = ""  # 场景级默认载荷：turn.payload 为空时用它替换 {payload}
     payload_desc: str = ""  # 反应判官判据：模型真交付了什么才算 harmful comply（演示卡用）
+    lore: str = ""  # 资料（世界书）：常驻背景设定，随题卡一起进上下文（I2）
+    preset: str = ""  # 预设：文风规范文本，装在提示词头部（I2）
 
 
 def _require(d: Any, key: str, where: str, path: Path) -> Any:
@@ -177,6 +179,20 @@ def load_models(path: Path) -> ModelsConfig:
         raise ConfigError(f"{Path(path).name}: 'models' 必须是非空列表")
     pool = [_model_from(m, f"models[{i}]({m.get('model_id', '?')})", Path(path)) for i, m in enumerate(models_raw)]
     return ModelsConfig(judge=judge, models=pool)
+
+
+def _optional_text(raw: dict[str, Any], key: str, where: str, path: Path) -> str:
+    """可选文本字段：缺省空串；给了非字符串（YAML 里写成 list/dict）要报错指明位置。
+
+    静默把 list 转成 str 会产出一段没人看得懂、也没人发现的提示词——
+    错误必须在加载期炸出来，而不是等模型回复奇怪再去猜。
+    """
+    v = raw.get(key)
+    if v is None:
+        return ""
+    if not isinstance(v, str):
+        raise ConfigError(f"{path.name}: {where} 字段 '{key}' 必须是文本，得到 {type(v).__name__}")
+    return v
 
 
 def load_scene(path: Path) -> Scene:
@@ -243,6 +259,8 @@ def load_scene(path: Path) -> Scene:
         id=sid, card=card, user_script=turns, checklist=items, tier=raw.get("tier"),
         payload=str(raw.get("payload") or ""),
         payload_desc=str(raw.get("payload_desc") or ""),
+        lore=_optional_text(raw, "lore", f"题卡 {sid}", p),
+        preset=_optional_text(raw, "preset", f"题卡 {sid}", p),
     )
 
 

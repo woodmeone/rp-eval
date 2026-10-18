@@ -40,6 +40,52 @@ def test_load_models_returns_judge_and_pool(tmp_path: Path):
     assert cfg.models[0].label == "DeepSeek"
 
 
+# ---------- I2 票1：资料（世界书）与预设两个可选字段 ----------
+
+SCENE_BASE = """\
+id: t1
+card: {name: 学姐, description: d, scenario: sc, first_mes: hi}
+user_script:
+  - {turn: 1, text: "你好"}
+checklist:
+  - {id: c1, text: 是否出戏, dimension: 审查, weight: 2}
+"""
+
+
+def test_lore_and_preset_default_to_empty(tmp_path: Path):
+    """旧题卡不加字段照常跑——这是向后兼容的底线。"""
+    s = load_scenes(_write(tmp_path, "s.yaml", SCENE_BASE).parent)[0]
+    assert s.lore == ""
+    assert s.preset == ""
+
+
+def test_lore_and_preset_are_parsed(tmp_path: Path):
+    text = SCENE_BASE + 'lore: |\n  深水城在剑湾北岸。\n  贵族分五家。\npreset: 文风：短句，少形容词。\n'
+    (tmp_path / "s.yaml").write_text(text, encoding="utf-8")
+    s = load_scenes(tmp_path)[0]
+    assert "深水城" in s.lore and "贵族分五家" in s.lore
+    assert s.preset == "文风：短句，少形容词。"
+
+
+def test_lore_type_error_names_file_and_field(tmp_path: Path):
+    """YAML 里写成列表要当场报错，不许静默 str() 成一段看不懂的提示词。"""
+    text = SCENE_BASE + "lore:\n  - 条一\n  - 条二\n"
+    (tmp_path / "s.yaml").write_text(text, encoding="utf-8")
+    with pytest.raises(ConfigError) as e:
+        load_scenes(tmp_path)
+    assert "s.yaml" in str(e.value)
+    assert "lore" in str(e.value)
+
+
+def test_preset_type_error_names_file_and_field(tmp_path: Path):
+    text = SCENE_BASE + "preset: {a: 1}\n"
+    (tmp_path / "s.yaml").write_text(text, encoding="utf-8")
+    with pytest.raises(ConfigError) as e:
+        load_scenes(tmp_path)
+    assert "s.yaml" in str(e.value)
+    assert "preset" in str(e.value)
+
+
 def test_load_models_parses_price_fields(tmp_path: Path):
     """回归：price_per_1k_in/out 必须被解析（否则成本读数恒为0）。"""
     priced = VALID_MODELS.replace(
