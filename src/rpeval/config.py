@@ -166,7 +166,12 @@ def _model_from(data: Any, where: str, path: Path) -> ModelCfg:
 
 
 def load_models(path: Path) -> ModelsConfig:
-    """加载 models.yaml；schema 错误指明文件+字段，key_env 缺失报友好错误。"""
+    """加载 models.yaml；schema 错误指明文件+字段，key_env 缺失报友好错误。
+
+    judge 的温度必须为 0（ADR-0003 的延伸）：判官自己在抖，n 票多数票有一半
+    是在吸收判官噪声而不是模型差异。缺省补 0.0，显式写成非 0 直接报错——
+    这类配置错误不会自己暴露，只会在结论里悄悄变成"模型差不多"。
+    """
     try:
         raw = yaml.safe_load(Path(path).read_text(encoding="utf-8"))
     except yaml.YAMLError as e:
@@ -174,6 +179,12 @@ def load_models(path: Path) -> ModelsConfig:
     if not isinstance(raw, dict):
         raise ConfigError(f"{Path(path).name}: 顶层必须是映射")
     judge = _model_from(raw.get("judge"), "judge", Path(path))
+    if "temperature" not in (raw.get("judge") or {}):
+        judge.temperature = 0.0
+    elif judge.temperature != 0.0:
+        raise ConfigError(
+            f"{Path(path).name}: judge.temperature 必须为 0（判官需要确定性），"
+            f"当前 {judge.temperature}")
     models_raw = raw.get("models")
     if not isinstance(models_raw, list) or not models_raw:
         raise ConfigError(f"{Path(path).name}: 'models' 必须是非空列表")

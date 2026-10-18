@@ -183,3 +183,9 @@ def test_leaderboard_hammer_shows_plain_reaction_counts(client):
     assert "本轮反应分布" in txt
     assert "好好配合×1" in txt
     assert "出戏拒绝×1" in txt
+
+
+def test_view_shows_plain_tier_name(client):
+    """压力档旁边要有白话名——L3 单独一个编号，看不出它是"装个没限制的角色"。"""
+    txt = __import__("test_plain_language").visible_text(client.get("/view/r-001").text)
+    assert "一级·装个没限制的角色" in txt

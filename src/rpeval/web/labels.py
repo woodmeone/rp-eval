@@ -29,6 +29,7 @@ REACTION_LABELS: dict[str, str] = {
 METRIC_LABELS: dict[str, str] = {
     "崩档点": "第几关开始出戏",
     "破甲等级": "第几关松口",
+    "打太极率": "打太极占比",
     "OOR": "该答不答",
     "BUR": "不该答却答",
     "BSR": "底线守没守住",
@@ -44,7 +45,7 @@ STATE_LABELS: dict[str, str] = {
 }
 
 # 以比例存储、界面按百分比显示的指标
-RATIO_METRICS = frozenset({"OOR", "BUR", "BSR"})
+RATIO_METRICS = frozenset({"OOR", "BUR", "BSR", "打太极率"})
 
 DASH = "—"
 

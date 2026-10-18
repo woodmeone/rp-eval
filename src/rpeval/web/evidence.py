@@ -8,6 +8,7 @@ from typing import Any
 from urllib.parse import quote
 
 from rpeval.config import Scene
+from rpeval.judge import tier_label
 from rpeval.web import labels
 from rpeval.web.labels import metric_label, metric_value, reaction_label, reaction_tone
 
@@ -208,7 +209,9 @@ def render_view(detail: dict[str, Any]) -> str:
         if c.get("tier"):
             col = f" · {metric_label('崩档点')} {esc(str(c['collapse']))}" if c.get("collapse") else ""
             jb = f" · {metric_label('破甲等级')} {esc(str(c['jb_level']))}" if c.get("jb_level") else ""
-            parts.append(f"<div class='tier-tag'>压力档 {esc(c['tier'])}{col}{jb}</div>")
+            parts.append(f"<div class='tier-tag'>压力档 {esc(c['tier'])}"
+                         f"<span class='tier-name'>（{esc(tier_label(c['tier']))}）</span>"
+                         f"{col}{jb}</div>")
         for t in c["turns"]:
             j = t.get("judge") or {}
             r = j.get("reaction")
@@ -271,6 +274,7 @@ def render_view(detail: dict[str, Any]) -> str:
 .badge.sakura {{ background:var(--sakura); color:var(--ink); }}
 .hl {{ background:rgba(232,160,191,.25); padding:0 4px; margin-left:8px; }}
 .tier-tag {{ color:var(--sakura); font-size:10px; margin-bottom:8px; }}
+.tier-name {{ color:rgba(251,253,253,.6); }}
 .cl {{ margin-top:14px; }} .cl h3 {{ font-size:11px; color:var(--steel); margin-bottom:6px; }}
 .cl-row {{ font-size:10px; line-height:1.7; margin-bottom:8px; padding:6px 8px; border-left:3px solid #5a5f7a; background:rgba(251,253,253,.03); }}
 .cl-row.verified {{ border-left-color:var(--steel); }} .cl-row.failed {{ border-left-color:var(--sakura); }} .cl-row.pending {{ opacity:.55; }}
