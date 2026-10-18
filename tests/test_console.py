@@ -59,7 +59,7 @@ def test_print_turn_card_contains_ansi(capsys):
     print_turn_card(build_turn_card("m", _turn(reaction="OOC refuse")))
     out = capsys.readouterr().out
     assert "\033[" in out
-    assert "OOC refuse" in out
+    assert "出戏拒绝" in out     # I1：终端与界面同源，显示白话名而非英文码
     assert "m" in out
 
 
