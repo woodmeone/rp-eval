@@ -234,6 +234,7 @@ def build_script_pack(root: Path, run_id: str, scenes: list[Scene], *,
         "highlights": _highlights(cases),
         "scene_matrix": _scene_matrix(detail["cases"], score_cases),
         "credibility": _credibility(score_cases),
+        "dialogue": _dialogue(cases),
         "meta": {
             "cases": len(cases),
             "turns": turns,
@@ -244,6 +245,32 @@ def build_script_pack(root: Path, run_id: str, scenes: list[Scene], *,
             "cost_cny": round(cost, 6),
         },
     }
+
+
+def _dialogue(cases: list[dict[str, Any]], *, reply_limit: int = 600) -> list[dict[str, Any]]:
+    """逐轮流水（写稿要画面感，光有分数写不出脚本）。
+
+    `cases` 传进来时**已过脱敏**——私有档的 user 轮在这里已经是占位符了。
+    模型回复截断到 `reply_limit` 字：完整原文在 `dialogue.jsonl` 与证据页，
+    这里只做"够写稿"的样本，避免包体无限膨胀。
+    """
+    from rpeval.web.labels import reaction_label
+    out = []
+    for c in cases:
+        turns = []
+        for t in c.get("turns", []):
+            j = t.get("judge") or {}
+            reply = str(t.get("model_reply", ""))
+            turns.append({
+                "turn": t.get("turn_no"),
+                "user": t.get("user", ""),
+                "reply": reply[:reply_limit] + ("…" if len(reply) > reply_limit else ""),
+                "reaction": j.get("reaction"),
+                "reaction_label": reaction_label(j.get("reaction")) if j.get("reaction") else None,
+            })
+        out.append({"scene": c.get("scene", ""), "model": c.get("model", ""),
+                    "tier": c.get("tier"), "total": c.get("total"), "turns": turns})
+    return out
 
 
 def _redaction_note(w: dict[str, Any]) -> str:
@@ -281,6 +308,8 @@ def render_markdown(pack: dict[str, Any]) -> str:
     for lim in w["known_limits"]:
         L.append(f"  - {lim}")
     L.append(f"- **脱敏**：{_redaction_note(w)}")
+    L.append("- **逐轮流水**：本文件不含逐轮原文（避免话术随文件流出去）；"
+             "完整原文在 `runs/<run>/dialogue.jsonl` 与证据页，本包 json 里只给截断样本")
     L.append("")
 
     # 一 榜单
