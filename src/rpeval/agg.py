@@ -16,21 +16,34 @@ _VERDICTS = {"a", "b", "tie"}
 # ---------- score.json → leaderboard ----------
 
 def leaderboard(run_dir: Path) -> dict[str, Any]:
-    """按模型聚合各维 0–10 平均分 + 总分平均 + rated（任一 case 不达标即 False）。"""
+    """按模型聚合各维 0–10 平均分 + 总分平均 + rated（任一 case 不达标即 False）。
+
+    同时给出**外壳差值**（I2）：同一模型带预设与裸壳的总分差。
+    只有两壳都跑过才算差值；只跑了一个壳就没有可比对象，给 None 而不是 0——
+    0 会被读成"预设没用"，那是在替数据编结论。
+    """
     data = json.loads((Path(run_dir) / "score.json").read_text(encoding="utf-8"))
     acc: dict[str, dict[str, Any]] = {}
+    by_shell: dict[tuple[str, str], list[float]] = {}
     for c in data["cases"]:
         m = acc.setdefault(c["model"], {"_dims": {}, "_total": [], "rated": True})
         if not c.get("rated", True):
             m["rated"] = False
         m["_total"].append(c.get("total", 0.0))
+        by_shell.setdefault((c["model"], c.get("shell", "")), []).append(c.get("total", 0.0))
         for dim, dv in c.get("dimensions", {}).items():
             m["_dims"].setdefault(dim, []).append(dv.get("score", 0.0))
     models = []
     for name, m in acc.items():
         dims = {d: round(sum(v) / len(v), 2) for d, v in m["_dims"].items()}
         total = round(sum(m["_total"]) / len(m["_total"]), 2) if m["_total"] else 0.0
-        models.append({"model": name, "dimensions": dims, "total": total, "rated": m["rated"]})
+        raw = by_shell.get((name, ""))
+        pre = by_shell.get((name, "preset"))
+        preset_delta = None
+        if raw and pre:
+            preset_delta = round(sum(pre) / len(pre) - sum(raw) / len(raw), 2)
+        models.append({"model": name, "dimensions": dims, "total": total,
+                       "rated": m["rated"], "preset_delta": preset_delta})
     models.sort(key=lambda r: r["total"], reverse=True)
     return {"models": models}
 

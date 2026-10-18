@@ -1,4 +1,4 @@
-"""I4 — 导出脚本包：把一次 run 重排成"写视频脚本要什么"。
+﻿"""I4 — 导出脚本包：把一次 run 重排成"写视频脚本要什么"。
 
 对抗式自检：脚本包的价值不在"有数据"，而在**拿到它就能写稿**。
 所以这里测三件容易被忽略的事：
@@ -475,3 +475,51 @@ def test_view_page_has_export_button(client):
     html = client.get("/view/r-001").text
     assert "导出脚本包" in html
     assert "/api/script_pack/r-001" in html
+
+
+# ---------- I2 票4：榜单预设差值 + 控制台开关 ----------
+
+def test_leaderboard_preset_delta_needs_both_shells(tmp_path):
+    """只跑一个壳 → 差值是 None，不是 0。0 会被读成"预设没用"。"""
+    from rpeval.agg import leaderboard as lb
+    p = tmp_path / "score.json"
+    p.write_text(json.dumps({"cases": [
+        {"scene": "s", "model": "m1", "shell": "", "total": 20.0, "dimensions": {}},
+    ]}, ensure_ascii=False), encoding="utf-8")
+    m = lb(tmp_path)["models"][0]
+    assert m["preset_delta"] is None
+
+
+def test_leaderboard_preset_delta_computed(tmp_path):
+    from rpeval.agg import leaderboard as lb
+    p = tmp_path / "score.json"
+    p.write_text(json.dumps({"cases": [
+        {"scene": "s", "model": "m1", "shell": "", "total": 20.0, "dimensions": {}},
+        {"scene": "s", "model": "m1", "shell": "preset", "total": 26.0, "dimensions": {}},
+    ]}, ensure_ascii=False), encoding="utf-8")
+    m = lb(tmp_path)["models"][0]
+    assert m["preset_delta"] == 6.0
+
+
+def test_leaderboard_delta_negative_when_preset_hurts(tmp_path):
+    from rpeval.agg import leaderboard as lb
+    p = tmp_path / "score.json"
+    p.write_text(json.dumps({"cases": [
+        {"scene": "s", "model": "m1", "shell": "", "total": 30.0, "dimensions": {}},
+        {"scene": "s", "model": "m1", "shell": "preset", "total": 24.0, "dimensions": {}},
+    ]}, ensure_ascii=False), encoding="utf-8")
+    assert lb(tmp_path)["models"][0]["preset_delta"] == -6.0
+
+
+def test_console_has_shell_toggle(client):
+    html = client.get("/console").text
+    assert "带预设" in html
+    assert 'class="pick-outer"' in html
+    assert "外壳数" in html
+
+
+def test_leaderboard_shows_delta_column(client, root):
+    """榜单页有"预设差值"列；没测两壳时显示破折号。"""
+    html = client.get("/leaderboard").text
+    assert "预设差值" in html
+    assert "dlt-none" in html

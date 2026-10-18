@@ -1,4 +1,4 @@
-"""像素主题：账号视频同款界面语言（四色+双层网格+扫描线+像素字体）。
+﻿"""像素主题：账号视频同款界面语言（四色+双层网格+扫描线+像素字体）。
 
 render_index() 渲染首页；配置摘要区展示"配置即数据"（模型数/题卡数/维度分布/同族警告）。
 """
@@ -275,7 +275,10 @@ def render_console(models: ModelsConfig | None, scenes: list[Scene]) -> str:
       <div id="models">{model_boxes}</div>
       <h2 style="margin-top:18px">题卡（按维度）</h2>
       <div id="scenes">{scene_boxes}</div>
-      <div class="cost">预估成本：<b id="cost">¥0.00</b>（题数×模型数×均价）</div>
+      <h2 style="margin-top:18px">外壳</h2>
+      <label><input type="checkbox" class="pick-outer" value="preset">带预设（同题再跑一遍，榜单出差值）</label>
+      <div class="cost">不勾＝只跑裸壳（与以前一致）。勾上＝同一题卡跑两遍，多花一倍。</div>
+      <div class="cost">预估成本：<b id="cost">¥0.00</b>（题数×模型数×外壳数×均价）</div>
       <button id="go">开始测评</button>
     </div>
     <div class="col-right">
@@ -293,7 +296,8 @@ const prog = document.getElementById("prog");
 function picked(sel) {{ return [...document.querySelectorAll(sel+":checked")].map(e=>e.value); }}
 function updateCost() {{
   const nm = picked(".pick-model").length, ns = picked(".pick-scene").length;
-  document.getElementById("cost").textContent = "¥" + (nm*ns*0.02).toFixed(2);
+  const nsh = 1 + picked(".pick-outer").length;
+  document.getElementById("cost").textContent = "¥" + (nm*ns*nsh*0.02).toFixed(2);
 }}
 document.querySelectorAll("input").forEach(e=>e.addEventListener("change", updateCost));
 updateCost();
@@ -314,10 +318,11 @@ function addMsg(text, cls) {{
 }}
 go.addEventListener("click", async () => {{
   const models = picked(".pick-model"), scenes = picked(".pick-scene");
+  const shells = [""].concat(picked(".pick-outer"));
   if (!models.length || !scenes.length) {{ addMsg("请先勾选至少一个模型和一张题卡", "sakura"); return; }}
   go.disabled = true; stream.innerHTML = "";
   const r = await fetch("/api/start", {{method:"POST", headers:{{"content-type":"application/json"}},
-    body: JSON.stringify({{models, scenes}})}});
+    body: JSON.stringify({{models, scenes, shells}})}});
   if (r.status === 409) {{ addMsg("已有 run 在跑，请等待", "sakura"); go.disabled=false; return; }}
   if (!r.ok) {{ const j = await r.json().catch(()=>({{}})); addMsg("启动失败：" + (j.error||r.status), "sakura"); go.disabled=false; return; }}
   addMsg("测评已启动，等待首轮判定…");
@@ -370,6 +375,18 @@ def render_leaderboard(data: dict) -> str:
 
     rows = []
     all_v = data.get("verdicts", {})
+
+    def _delta_cell(delta: object) -> str:
+        """预设差值：没跑两壳时给破折号，不写 0。
+
+        0 会被读成"预设没用"，那是在替数据编结论；没测就该显示"没测"。
+        """
+        if delta is None:
+            return "<span class='dlt-none'>—</span>"
+        cls = "dlt-up" if delta > 0 else ("dlt-down" if delta < 0 else "dlt-zero")
+        sign = "+" if delta > 0 else ""
+        return f"<span class='{cls}'>{sign}{delta}</span>"
+
     _worst = {"bad": 2, "mid": 1, "ok": 0}
     for m in data.get("models", []):
         flag = "" if m.get("rated", True) else "<span class='norec'>不予推荐评级</span>"
@@ -396,6 +413,7 @@ def render_leaderboard(data: dict) -> str:
             verdict_html = "<span class='lb-none'>—</span>"
         rows.append(
             f"<tr><td>{esc(m['model'])}{flag}</td><td class='tot'>{m['total']}</td>"
+            f"<td>{_delta_cell(m.get('preset_delta'))}</td>"
             f"<td>{bars}</td><td>{verdict_html}</td><td>{hammer_html}</td></tr>")
     elo = data.get("elo", {})
     ci = data.get("elo_ci", {})
@@ -418,7 +436,7 @@ def render_leaderboard(data: dict) -> str:
         main = ("<div class='empty'>还没有测评数据——先跑一轮测评，榜单会自动生成。<br><br>"
                 "<a class='btn primary' href='/console'>去控制台开跑 →</a></div>")
     else:
-        main = f"""<table><tr><th>模型</th><th>总分/60</th><th>每维 0–10</th><th>结论</th><th>细节锤点</th></tr>{''.join(rows)}</table>
+        main = f"""<table><tr><th>模型</th><th>总分/60</th><th>预设差值</th><th>每维 0–10</th><th>结论</th><th>细节锤点</th></tr>{''.join(rows)}</table>
 <h2 style="color:var(--steel);margin-top:20px">Elo（BT 强度 · 95% CI）</h2>
 <table><tr><th>模型</th><th>强度</th><th>CI</th></tr>{elo_rows or '<tr><td colspan=3>无 battle 数据</td></tr>'}</table>
 <h2 style="color:var(--steel);margin-top:20px">胜率矩阵（行对列）</h2>
@@ -437,6 +455,10 @@ th, td {{ border:1px solid rgba(186,194,247,.3); padding:8px; text-align:left; v
 .dimbar i {{ display:block; height:8px; background:var(--steel); transition: width .6s steps(12); }}
 .dimbar b {{ color:var(--paper); }}
 .tot {{ color:var(--sakura); font-size:14px; }}
+.dlt-up {{ color:var(--steel); }}
+.dlt-down {{ color:var(--sakura); }}
+.dlt-zero {{ color:rgba(251,253,253,.6); }}
+.dlt-none {{ color:rgba(251,253,253,.25); }}
 .lb-sum {{ display:flex; flex-direction:column; gap:4px; }}
 .lb-v {{ padding:3px 8px; font-size:10px; border-left:3px solid var(--steel); background:rgba(186,194,247,.08); }}
 .lb-v.lb-v-ok {{ border-left-color:var(--steel); color:var(--steel); }}
