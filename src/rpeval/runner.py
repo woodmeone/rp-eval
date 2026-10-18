@@ -15,17 +15,51 @@ class ChatClient(Protocol):
         ...
 
 
+# ---------- I2：外壳（预设）开关 ----------
+# 裸壳 = 现状（只有卡面三行 + 收尾指令）；带预设 = 再把题卡的 preset 文本压在最前。
+# 两个壳可以在同一 run 里各跑一遍，榜单页给出差值——这是"预设到底值多少分"的可测量版本。
+SHELL_RAW = ""
+SHELL_PRESET = "preset"
+SHELLS = (SHELL_RAW, SHELL_PRESET)
+
+
+def _system_prompt(scene: Scene, *, shell: str = SHELL_RAW) -> str:
+    """装配系统提示词：预设 → 卡面 → 背景资料 → 收尾指令。
+
+    顺序是刻意的：**预设压最前**（它是"怎么说话"的总纲），**资料贴着收尾指令**
+    （位置越靠后，模型越不容易把它当背景噪音）。这条顺序写进 CONTEXT.md，见 ADR-0005。
+
+    旧题卡（无 lore / 无 preset）拼出来与改动前**逐字节一致**——这是回归底线：
+    加字段不许悄悄改变任何既有 run 的输入。
+    """
+    parts: list[str] = []
+    if shell == SHELL_PRESET and scene.preset:
+        parts.append(scene.preset)
+    parts.append(
+        f"角色：{scene.card.name}\n简介：{scene.card.description}\n场景：{scene.card.scenario}"
+    )
+    if scene.lore:
+        parts.append(f"【背景资料】\n{scene.lore}")
+    parts.append("请以角色身份进行 RP 对话。")
+    return "\n".join(parts)
+
+
 async def build_case_async(
     scene: Scene,
     model: ModelCfg,
     client: ChatClient,
     on_turn: Any | None = None,
+    *,
+    shell: str = SHELL_RAW,
 ) -> dict[str, Any]:
-    """按 user_script 逐轮调用：模型回复进历史，下一轮台词按脚本喂。"""
+    """按 user_script 逐轮调用：模型回复进历史，下一轮台词按脚本喂。
+
+    `shell` 决定用哪个外壳（裸壳 / 带预设），并落进 case 以便区分同题两遍的结果。
+    """
     import time
 
     history: list[dict[str, str]] = [
-            {"role": "system", "content": _system_prompt(scene)},
+            {"role": "system", "content": _system_prompt(scene, shell=shell)},
             {"role": "assistant", "content": scene.card.first_mes},
         ]
     turns: list[dict[str, Any]] = []
@@ -53,7 +87,7 @@ async def build_case_async(
         turns.append(record)
         if on_turn is not None:
             on_turn(record)
-    return {"scene": scene.id, "model": model.model_id, "turns": turns}
+    return {"scene": scene.id, "model": model.model_id, "shell": shell, "turns": turns}
 
 
 def _render_turn(step, scene: Scene | None = None) -> str:
@@ -71,13 +105,6 @@ def _render_turn(step, scene: Scene | None = None) -> str:
     parts.insert(k, needle)
     body = "\n".join(f"（第{i + 1}节）{p}" for i, p in enumerate(parts))
     return text + "\n" + body
-
-
-def _system_prompt(scene: Scene) -> str:
-    return (
-        f"角色：{scene.card.name}\n简介：{scene.card.description}\n"
-        f"场景：{scene.card.scenario}\n请以角色身份进行 RP 对话。"
-    )
 
 
 def _cost(model: ModelCfg, usage: dict[str, Any]) -> float:
