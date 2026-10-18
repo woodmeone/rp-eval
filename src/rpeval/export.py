@@ -73,6 +73,7 @@ def _what_was_tested(root: Path, cases: list[dict[str, Any]], score_cases: list[
             if d not in dims:
                 dims.append(d)
     judge, pool = _load_models_cfg(root)
+    redacted_cases = sum(1 for c in cases if c.get("tier")) if redact else 0
     return {
         "dimensions": dims,
         "scenes": sorted({c.get("scene", "") for c in cases if c.get("scene")}),
@@ -85,6 +86,8 @@ def _what_was_tested(root: Path, cases: list[dict[str, Any]], score_cases: list[
         "tested_models": pool,
         "known_limits": list(KNOWN_LIMITS),
         "redacted": redact,
+        # 打码开关开着 ≠ 真的打了码。没有私有档时不许写"已打码"，那是假口径。
+        "redacted_cases": redacted_cases,
     }
 
 
@@ -241,3 +244,121 @@ def build_script_pack(root: Path, run_id: str, scenes: list[Scene], *,
             "cost_cny": round(cost, 6),
         },
     }
+
+
+def _redaction_note(w: dict[str, Any]) -> str:
+    """脱敏口径：开关状态与**实际打码的 case 数**要分开说。"""
+    if not w["redacted"]:
+        return "⚠ 已关闭脱敏——本文件含私有话术，不得外传"
+    n = w.get("redacted_cases", 0)
+    if n:
+        return f"私有档话术已打码（{n} 个 case），私密题不出现在本文件"
+    return "本 run 无私有档 case（没有 tier），无需打码"
+
+
+def render_markdown(pack: dict[str, Any]) -> str:
+    """脚本包 → markdown（七块）。**给 AI 与人的同一份文本**，不另做简版。"""
+    from rpeval.web.labels import metric_label, metric_value
+
+    w = pack["what_was_tested"]
+    meta = pack["meta"]
+    L: list[str] = []
+    L.append(f"# {pack['run']} · RP 横评数据包")
+    L.append(f"> 生成 {pack['generated_at']} · 口径 v{pack['schema_version']} · "
+             f"judge={((w.get('judge') or {}).get('model_id')) or '—'}")
+    L.append("")
+
+    # 〇 写脚本前必读
+    L.append("## 〇 写脚本前必读（这段是给 AI 的）")
+    L.append(f"- **测了什么**：{'·'.join(w['dimensions']) or '—'}；共 {w['checklist_total']} 条检查项"
+             f"（LLM 判 {w['checklist_llm']} 条，程序化判 {w['checklist_programmatic']} 条）")
+    L.append(f"- **怎么测的**：{len(w['models'])} 个模型 × {len(w['scenes'])} 张题卡，"
+             f"每 case 跑 {w['samples_per_case']} 次")
+    if w.get("tested_models"):
+        temps = "、".join(f"{m['model_id']}@{m['temperature']}" for m in w["tested_models"])
+        L.append(f"- **采样参数**：{temps}")
+    L.append(f"- **没测什么**：")
+    for lim in w["known_limits"]:
+        L.append(f"  - {lim}")
+    L.append(f"- **脱敏**：{_redaction_note(w)}")
+    L.append("")
+
+    # 一 榜单
+    L.append("## 一 榜单")
+    if pack["leaderboard"]:
+        dims = [d for m in pack["leaderboard"] for d in m.get("dimensions", {})]
+        dim_names = list(dict.fromkeys(dims))
+        L.append("| 模型 | 总分 | " + " | ".join(dim_names) + " | 备注 |")
+        L.append("|---" * (3 + len(dim_names)) + "|")
+        for m in pack["leaderboard"]:
+            cells = " | ".join(str(m.get("dimensions", {}).get(d, "—")) for d in dim_names)
+            note = "" if m.get("rated", True) else "底线没守住·不给推荐"
+            L.append(f"| {m['model']} | {m.get('total')} | {cells} | {note} |")
+    else:
+        L.append("（无 score.json，无榜单数据）")
+    L.append("")
+
+    # 二 锤点
+    L.append("## 二 锤点（可直接剪）")
+    if pack["hammers"]:
+        L.append("| # | 模型 | 题卡 | 轮 | 检查项 | 证据原文 | 票 |")
+        L.append("|---|---|---|---|---|---|---|")
+        for i, h in enumerate(pack["hammers"], 1):
+            votes = "".join("✓" if v == "pass" else "✗" for v in h["votes"]) or "—"
+            L.append(f"| {i} | {h['model']} | {h['scene']} | {h['turn']} | {h['claim']} | "
+                     f"{h['quote']} | {votes} |")
+    else:
+        L.append("（本 run 无失败项）")
+    L.append("")
+
+    # 三 正面素材
+    L.append("## 三 守得住的正面素材")
+    if pack["highlights"]:
+        L.append("| 模型 | 题卡 | 轮 | 反应 | 原文 |")
+        L.append("|---|---|---|---|---|")
+        for h in pack["highlights"]:
+            L.append(f"| {h['model']} | {h['scene']} | {h['turn']} | {h['reaction_label']} | {h['quote']} |")
+    else:
+        L.append("（本 run 无「用角色的话拒绝」的理想片段）")
+    L.append("")
+
+    # 四 题卡 × 模型
+    m4 = pack["scene_matrix"]
+    L.append("## 四 题卡 × 模型对照")
+    if m4["scenes"] and m4["models"]:
+        L.append("| 题卡 | " + " | ".join(m4["models"]) + " | 拉得开? |")
+        L.append("|---" * (m4["models"].__len__() + 2) + "|")
+        for s in m4["scenes"]:
+            cells = []
+            for m in m4["models"]:
+                c = m4["cells"][s][m]
+                cells.append("—" if c is None else str(c["total"]))
+            L.append(f"| {s} | " + " | ".join(cells) + " | "
+                     + ("✅" if s in m4["discriminating"] else "") + " |")
+    else:
+        L.append("（无数据）")
+    L.append("")
+
+    # 五 可信度
+    cr = pack["credibility"]
+    L.append("## 五 可信度与边界")
+    L.append(f"- 检查项 {cr['items']} 条，其中票数完全一致 {cr['unanimous']} 条"
+             + (f"（一致率 {cr['unanimous_rate']}）" if cr["unanimous_rate"] is not None else ""))
+    L.append("- 人工抽检：" + ("未做（judge 与人的一致率无从谈起）" if cr["human_recheck"] is None
+                              else str(cr["human_recheck"])))
+    for lim in w["known_limits"]:
+        L.append(f"- ⚠ {lim}")
+    L.append("")
+
+    # 六 元数据
+    L.append("## 六 元数据（口播用）")
+    L.append(f"- run：{pack['run']} ｜ 生成：{pack['generated_at']}")
+    L.append(f"- 规模：{meta['cases']} 个 case · {meta['turns']} 轮 · "
+             f"{len(meta['models'])} 模型 · {meta['scenes']} 题卡")
+    L.append(f"- 成本：¥{meta['cost_cny']}")
+    if meta.get("tested_models"):
+        L.append("- 模型池：" + "、".join(
+            f"{m['model_id']}（温度 {m['temperature']}，上限 {m['max_tokens']} tokens）"
+            for m in meta["tested_models"]))
+    L.append("")
+    return "\n".join(L)

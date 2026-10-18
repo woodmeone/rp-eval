@@ -1,4 +1,4 @@
-﻿"""I4 — 导出脚本包：把一次 run 重排成"写视频脚本要什么"。
+"""I4 — 导出脚本包：把一次 run 重排成"写视频脚本要什么"。
 
 对抗式自检：脚本包的价值不在"有数据"，而在**拿到它就能写稿**。
 所以这里测三件容易被忽略的事：
@@ -11,7 +11,7 @@ import json
 import pytest
 
 from rpeval.config import load_scenes
-from rpeval.export import build_script_pack
+from rpeval.export import build_script_pack, render_markdown
 
 MODELS = """\
 judge: {model_id: qwen-plus, provider: qwen, base_url: https://x/v1, key_env: K, temperature: 0.0}
@@ -261,3 +261,68 @@ def test_meta_counts_and_cost(root):
     assert m["scenes"] == 2
     assert m["cost_cny"] == pytest.approx(0.06)
     assert m["models"] == ["deepseek-chat", "glm-4"]
+
+
+# ---------- 票2：markdown 七块 ----------
+
+SECTIONS = ("## 〇 写脚本前必读", "## 一 榜单", "## 二 锤点", "## 三 守得住的正面素材",
+            "## 四 题卡 × 模型对照", "## 五 可信度与边界", "## 六 元数据")
+
+
+def test_markdown_has_all_sections(root):
+    md = render_markdown(_pack(root))
+    for s in SECTIONS:
+        assert s in md, f"缺节：{s}"
+
+
+def test_markdown_repeats_known_limits_not_just_json(root):
+    """口径必须落在**正文里**：下游拿到的是 md，不是 json。
+
+    只在 json 里写"未重复采样"，AI 写稿时就敢说"我们跑了 400 次"。
+    """
+    md = render_markdown(_pack(root))
+    assert "未重复采样" in md
+    assert "世界书" in md and "预设" in md
+    assert "每 case 跑 1 次" in md
+
+
+def test_markdown_hammer_table_is_cuttable(root):
+    md = render_markdown(_pack(root))
+    assert "作为AI我不能" in md          # 证据原文
+    assert "deepseek-chat" in md
+    assert "检查项" in md
+    assert "✗✗✗✗✗" in md                # 五票全挂
+
+
+def test_markdown_shows_numbers_not_placeholders(root):
+    md = render_markdown(_pack(root))
+    assert "10.0" in md and "6.0" in md
+
+
+def test_markdown_declares_redaction_state(root):
+    md = render_markdown(_pack(root))
+    assert "私有档话术已打码" in md
+    assert "1 个 case" in md
+
+
+def test_redaction_note_does_not_claim_work_it_did_not_do(tmp_path):
+    """没有私有档时不许写"已打码"——那是假口径。"""
+    run = tmp_path / "runs" / "r-open"
+    run.mkdir(parents=True)
+    (run / "dialogue.jsonl").write_text(json.dumps(DIALOGUE[1], ensure_ascii=False), encoding="utf-8")
+    pack = build_script_pack(tmp_path, "r-open", [])
+    assert pack["what_was_tested"]["redacted_cases"] == 0
+    md = render_markdown(pack)
+    assert "已打码" not in md
+    assert "无私有档 case" in md
+
+
+def test_markdown_degrades_on_empty_run(tmp_path):
+    """只有 dialogue 没有 score：七块标题仍要在，内容降级为空而不是整篇崩。"""
+    run = tmp_path / "runs" / "r-only"
+    run.mkdir(parents=True)
+    (run / "dialogue.jsonl").write_text(json.dumps(DIALOGUE[0], ensure_ascii=False), encoding="utf-8")
+    md = render_markdown(build_script_pack(tmp_path, "r-only", []))
+    for s in SECTIONS:
+        assert s in md
+    assert "无 score.json" in md
