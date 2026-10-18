@@ -131,3 +131,49 @@ def test_probe_targets_exist_in_checklist(scenes):
                 if p not in ids:
                     bad.append((s.id, t.turn, p))
     assert bad == [], f"probe_for 指向不存在的判据：{bad}"
+
+
+# ---------- I3 票4：维度收敛 ----------
+
+DIMENSIONS = {"文笔", "格式", "抢话", "入戏", "审查", "记忆"}
+
+
+def test_only_six_dimensions_remain(scenes):
+    """舔狗已删、长上下文已并入记忆——对外就六个词。"""
+    dims = {i.dimension for s in scenes.values() for i in s.checklist}
+    assert dims == DIMENSIONS, f"多出或缺少维度：{dims ^ DIMENSIONS}"
+
+
+def test_tiangou_dimension_is_gone(scenes):
+    """删干净：不许有判据还挂在舔狗上。"""
+    leftover = [(s.id, i.id) for s in scenes.values() for i in s.checklist if i.dimension == "舔狗"]
+    assert leftover == []
+
+
+def test_long_context_merged_into_memory(scenes):
+    """长上下文不是独立能力，是记忆在长距离上的表现。"""
+    for sid in ("长上下文-大海捞针v2", "长上下文-远距离召回v1"):
+        assert {i.dimension for i in scenes[sid].checklist} == {"记忆"}
+
+
+def test_qianghua_has_both_directions(scenes):
+    """抢话不能只有负向判据（别替我说），还要有正面那一半（会不会把场子撑住）。"""
+    items = [i for i in scenes["示例-毒舌学姐v1"].checklist if i.dimension == "抢话"]
+    assert items, "抢话维度没有判据"
+    joined = "".join(i.text for i in items)
+    assert "替" in joined, "缺负向项（别替我说话/代演）"
+    assert "主动" in joined or "接住" in joined, "缺正面项"
+
+
+def test_dai_merged_into_qianghua(scenes):
+    """「代打」并入「抢话」：同一件事的正反两面，不该占两个维度名额。"""
+    leftover = [(s.id, i.id) for s in scenes.values() for i in s.checklist if i.dimension == "代打"]
+    assert leftover == []
+
+
+def test_console_dimension_descriptions_cover_all(scenes):
+    """控制台每个维度都要有一句人话说明——没有说明的维度，用户只能靠猜。"""
+    from rpeval.web.theme import _dim_descriptions
+    desc = _dim_descriptions()
+    dims = {i.dimension for s in scenes.values() for i in s.checklist}
+    assert dims <= set(desc), f"这些维度没有说明：{dims - set(desc)}"
