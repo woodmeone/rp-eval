@@ -5,6 +5,7 @@ import html as _html
 import json
 from pathlib import Path
 from typing import Any
+from urllib.parse import quote
 
 from rpeval.config import Scene
 from rpeval.web import labels
@@ -245,6 +246,13 @@ def render_view(detail: dict[str, Any]) -> str:
     panes = "".join(f"<div class='pane' data-i='{i}'{' style=\"display:none\"' if i else ''}>{turn_block(c)}</div>"
                     for i, c in enumerate(cases))
 
+    rid = detail.get("run_id", "")
+    rid_q = quote(str(rid), safe="")
+    exp_bar = (f"<div class='expbar'>"
+               f"<a href='/api/script_pack/{rid_q}'>导出脚本包</a>"
+               f"<a class='steel' href='/api/script_pack/{rid_q}?format=json'>导出 JSON</a>"
+               f"<span>丢给 AI 就能写脚本：口径自述 + 榜单 + 锤点 + 正面素材 + 对照 + 可信度 + 元数据</span>"
+               f"</div>")
     return f"""\
 <!DOCTYPE html>
 <html lang="zh">
@@ -309,6 +317,10 @@ def render_view(detail: dict[str, Any]) -> str:
 .case-item {{ padding-left:14px; }}
 .mxwrap {{ width:94vw; margin:8px auto 14px; }}
 .mx-h {{ font-size:10px; color:var(--steel); letter-spacing:1px; margin-bottom:6px; }}
+.expbar {{ width:94vw; margin:0 auto 12px; display:flex; gap:10px; align-items:center; }}
+.expbar a {{ font-family:var(--pixel-font); font-size:11px; padding:8px 14px; text-decoration:none; background:var(--sakura); color:var(--ink); }}
+.expbar a.steel {{ background:var(--steel); }}
+.expbar span {{ font-size:9px; color:rgba(251,253,253,.5); }}
 .mx-grid {{ border-collapse:collapse; font-size:10px; }}
 .mx-grid th {{ color:var(--paper); font-weight:normal; padding:4px 8px; text-align:left; max-width:120px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }}
 .mx-grid thead th {{ color:var(--steel); }}
@@ -318,7 +330,7 @@ td.mx.mx-ok {{ background:rgba(186,194,247,.28); }} td.mx.mx-mid {{ background:r
 td.mx.empty {{ color:rgba(251,253,253,.25); cursor:default; background:transparent; }}
 td.mx:not(.empty):hover {{ outline:2px solid var(--paper); }}
 </style></head>
-<body>{render_nav("/evidence")}{summary_matrix()}<div class="case">
+<body>{render_nav("/evidence")}{summary_matrix()}{exp_bar}<div class="case">
   <div>
     <h2 style="font-size:12px;color:var(--paper);margin:10px 0">证据浏览器 · {esc(detail.get('run_id',''))}</h2>
     {case_filter}

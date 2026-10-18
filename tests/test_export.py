@@ -410,3 +410,68 @@ def test_masked_pack_still_renders(root):
     md = render_markdown(_pack(root))
     for s in SECTIONS:
         assert s in md
+
+
+# ---------- 票4：落盘 + 前端按钮 ----------
+
+def test_write_script_pack_lands_two_files(root):
+    from rpeval.export import write_script_pack
+    paths = write_script_pack(root, "r-001", load_scenes(root / "scenes"), now="2026-10-18T12:00:00")
+    names = sorted(p.name for p in paths)
+    assert names == ["script_pack.json", "script_pack.md"]
+    assert all(p.parent == root / "runs" / "r-001" for p in paths)
+    md = (root / "runs" / "r-001" / "script_pack.md").read_text(encoding="utf-8")
+    assert "## 〇 写脚本前必读" in md
+    packed = json.loads((root / "runs" / "r-001" / "script_pack.json").read_text(encoding="utf-8"))
+    assert packed["schema_version"] == 1
+    assert packed["run"] == "r-001"
+
+
+def test_write_script_pack_missing_run_returns_none(root):
+    from rpeval.export import write_script_pack
+    assert write_script_pack(root, "没有这个", []) is None
+
+
+@pytest.fixture()
+def client(root):
+    from starlette.testclient import TestClient
+
+    from rpeval.web.app import create_app
+    return TestClient(create_app(root))
+
+
+def test_export_endpoint_serves_markdown_attachment(client, root):
+    r = client.get("/api/script_pack/r-001")
+    assert r.status_code == 200
+    assert "markdown" in r.headers["content-type"]
+    assert "attachment" in r.headers["content-disposition"]
+    assert "script_pack_r-001.md" in r.headers["content-disposition"]
+    assert "## 〇 写脚本前必读" in r.text
+
+
+def test_export_endpoint_serves_json(client):
+    r = client.get("/api/script_pack/r-001?format=json")
+    assert r.status_code == 200
+    assert "json" in r.headers["content-type"]
+    assert "script_pack_r-001.json" in r.headers["content-disposition"]
+    assert json.loads(r.text)["schema_version"] == 1
+
+
+def test_export_endpoint_writes_files_to_disk(client, root):
+    client.get("/api/script_pack/r-001")
+    assert (root / "runs" / "r-001" / "script_pack.md").is_file()
+    assert (root / "runs" / "r-001" / "script_pack.json").is_file()
+
+
+def test_export_endpoint_unknown_run_404(client):
+    assert client.get("/api/script_pack/没有这个").status_code == 404
+
+
+def test_export_endpoint_rejects_bad_format(client):
+    assert client.get("/api/script_pack/r-001?format=pdf").status_code == 400
+
+
+def test_view_page_has_export_button(client):
+    html = client.get("/view/r-001").text
+    assert "导出脚本包" in html
+    assert "/api/script_pack/r-001" in html

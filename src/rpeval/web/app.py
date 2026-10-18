@@ -148,6 +148,25 @@ def create_app(config_dir: Path | None = None, client_factory=None) -> FastAPI:
             return HTMLResponse("<h1>run 不存在</h1>", status_code=404)
         return render_view(detail)
 
+    # ---------- 票#2：导出脚本包 ----------
+
+    @app.get("/api/script_pack/{run_id}")
+    def api_script_pack(run_id: str, format: str = "md"):
+        """导出脚本包（I4）。先落盘再下发——数据包要有稳定路径可翻可 grep。"""
+        from fastapi.responses import FileResponse
+
+        from rpeval.export import write_script_pack
+        if format not in ("md", "json"):
+            return JSONResponse({"error": f"format 只支持 md/json，收到 {format!r}"}, status_code=400)
+        _, scenes, _ = _load()
+        paths = write_script_pack(root, run_id, scenes)
+        if paths is None:
+            return JSONResponse({"error": "run 不存在"}, status_code=404)
+        target = next((p for p in paths if p.suffix == ("." + format)), paths[0])
+        media = "text/markdown; charset=utf-8" if format == "md" else "application/json; charset=utf-8"
+        return FileResponse(target, media_type=media,
+                            filename=f"script_pack_{run_id}.{format}")
+
     # ---------- 票08：run 控制 ----------
 
     @app.get("/api/busy")

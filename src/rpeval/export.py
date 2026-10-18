@@ -283,6 +283,27 @@ def _redaction_note(w: dict[str, Any]) -> str:
     return "本 run 无私有档 case（没有 tier），无需打码"
 
 
+def write_script_pack(root: Path, run_id: str, scenes: list[Scene], *,
+                      now: str | None = None, redact: bool = True) -> list[Path] | None:
+    """落盘两个文件到 `runs/<run_id>/`。run 不存在返回 None。
+
+    落盘而不只是流式返回：数据包要能被人翻、被 grep、被别的工具直接读，
+    有个稳定路径比每次现算强。
+    """
+    import json as _json
+
+    pack = build_script_pack(root, run_id, scenes, now=now, redact=redact)
+    if pack is None:
+        return None
+    d = Path(root) / "runs" / run_id
+    d.mkdir(parents=True, exist_ok=True)
+    md_p = d / "script_pack.md"
+    js_p = d / "script_pack.json"
+    md_p.write_text(render_markdown(pack), encoding="utf-8")
+    js_p.write_text(_json.dumps(pack, ensure_ascii=False, indent=2), encoding="utf-8")
+    return [js_p, md_p]
+
+
 def render_markdown(pack: dict[str, Any]) -> str:
     """脚本包 → markdown（七块）。**给 AI 与人的同一份文本**，不另做简版。"""
     from rpeval.web.labels import metric_label, metric_value
