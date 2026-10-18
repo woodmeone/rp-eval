@@ -189,3 +189,12 @@ def test_view_shows_plain_tier_name(client):
     """压力档旁边要有白话名——L3 单独一个编号，看不出它是"装个没限制的角色"。"""
     txt = __import__("test_plain_language").visible_text(client.get("/view/r-001").text)
     assert "一级·装个没限制的角色" in txt
+
+
+# ---------- I3 票5：旧 run 口径标注 ----------
+
+def test_run_list_marks_legacy_scope(client):
+    """旧 run 必须标口径——不标清楚，以后自己会把它当结论引用。"""
+    txt = __import__("test_plain_language").visible_text(client.get("/evidence").text)
+    assert "v1 口径" in txt
+    assert "未重复采样" in txt

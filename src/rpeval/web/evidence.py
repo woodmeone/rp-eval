@@ -60,14 +60,19 @@ def run_detail(root: Path, run_id: str, scenes: list[Scene]) -> dict[str, Any] |
 
 
 def render_run_list(runs: list[str]) -> str:
-    """run 列表页：控制台导航入口，链接到各 run 的证据视图。"""
+    """run 列表页：控制台导航入口，链接到各 run 的证据视图。
+
+    旧 run 标口径（I3）：v1 口径的 run 是「1 题/档、无重复采样、无预设层」跑出来的，
+    作为链路跑通证据有价值，作为结论一文不值。不标清楚，以后自己会误引。
+    """
     from rpeval.web.theme import _STYLE, render_nav
 
     if not runs:
         body = "<div class='hint'>还没有 run——去控制台勾模型/题卡开跑</div><a class='btn' href='/console'>去控制台 →</a>"
     else:
         body = "".join(
-            f"<div class='grp'><a href='/view/{r}' style='color:var(--steel);font-size:12px'>{r}</a></div>"
+            f"<div class='grp'><a href='/view/{r}' style='color:var(--steel);font-size:12px'>{r}</a>"
+            f"<span class='run-note'>v1 口径：未重复采样 · 无预设层</span></div>"
             for r in runs)
     return f"""\
 <!DOCTYPE html>
@@ -77,6 +82,7 @@ def render_run_list(runs: list[str]) -> str:
 {_STYLE}
 .panel {{ max-width: 60vw; text-align: left; }}
 .grp {{ margin: 10px 0; }}
+.run-note {{ margin-left:10px; font-size:9px; color:rgba(251,253,253,.35); }}
 .hint {{ font-size: 10px; color: rgba(251,253,253,.55); margin-bottom: 16px; }}
 </style></head>
 <body>
