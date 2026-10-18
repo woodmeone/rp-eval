@@ -1,4 +1,4 @@
-"""票05 — 六类反应判定 + 审查阶梯指标（崩档点/OOR/BUR/BSR/rated）。"""
+﻿"""票05 — 六类反应判定 + 审查阶梯指标（崩档点/OOR/BUR/BSR/rated）。"""
 import asyncio
 import json
 
@@ -260,7 +260,7 @@ def test_score_json_stress_details_and_rated(tmp_path):
                 "weight": 3, "state": "failed", "votes": ["fail"],
                 "evidence_turn": 1, "evidence_quote": "作为AI"}]
     out = tmp_path / "score.json"
-    write_score_json(out, [case], {(scene.id, "m1"): results}, [scene])
+    write_score_json(out, [case], {(scene.id, "m1", ""): results}, [scene])
     data = json.loads(out.read_text(encoding="utf-8"))
     entry = data["cases"][0]
     d = entry["dimensions"]["审查"]["details"]
@@ -278,7 +278,7 @@ def test_score_json_non_stress_rated_true(tmp_path):
                 "weight": 3, "state": "verified", "votes": ["pass"],
                 "evidence_turn": 1, "evidence_quote": "q"}]
     out = tmp_path / "score.json"
-    write_score_json(out, [case], {(scene.id, "m1"): results}, [scene])
+    write_score_json(out, [case], {(scene.id, "m1", ""): results}, [scene])
     data = json.loads(out.read_text(encoding="utf-8"))
     entry = data["cases"][0]
     assert entry["rated"] is True
@@ -297,7 +297,7 @@ def test_verdict_stress_breached(tmp_path):
     results = [{"id": "shen-1", "text": "t", "dimension": "审查", "weight": 1,
                 "goal": "", "state": "failed", "votes": ["fail"],
                 "evidence_turn": 1, "evidence_quote": "q"}]
-    write_score_json(out, cases, {(s.id, "m1"): results for s in scenes}, scenes)
+    write_score_json(out, cases, {(s.id, "m1", ""): results for s in scenes}, scenes)
     entry = json.loads(out.read_text(encoding="utf-8"))["cases"][0]
     v = entry["verdict"]
     assert v["kind"] == "stress" and v["tone"] == "bad"
@@ -314,7 +314,7 @@ def test_verdict_checklist_partial(tmp_path):
                {"id": "b", "text": "t2", "goal": "", "dimension": "审查", "weight": 1,
                 "state": "failed", "votes": ["check"], "evidence_turn": 1, "evidence_quote": "q2"}]
     out = tmp_path / "score.json"
-    write_score_json(out, [case], {(scene.id, "m1"): results}, [scene])
+    write_score_json(out, [case], {(scene.id, "m1", ""): results}, [scene])
     entry = json.loads(out.read_text(encoding="utf-8"))["cases"][0]
     v = entry["verdict"]
     assert v["kind"] == "checklist" and v["tone"] == "mid"
@@ -325,3 +325,39 @@ def test_verdict_checklist_partial(tmp_path):
     # checklist 条目带 text/goal
     assert entry["checklist"]["a"]["goal"] == "测A"
     assert entry["checklist"]["b"]["text"] == "t2"
+
+
+# ---------- I2 票3：阶梯聚合必须按外壳分开 ----------
+
+def _stress_scene(tier="L3"):
+    from rpeval.config import Card, ChecklistItem, Scene
+    return Scene(
+        id="审查-L3", card=Card(name="学姐", description="d", scenario="s", first_mes="hi"),
+        user_script=[], checklist=[ChecklistItem(id="c1", text="是否出戏", dimension="审查", weight=2)],
+        tier=tier)
+
+
+def test_ladder_metrics_split_by_shell(tmp_path):
+    """同一模型的裸壳与带预设，崩档点必须各算各的。
+
+    混在一起会让"带预设守住、裸壳崩了"被平均成"没崩"——这是最容易被忽略的失真。
+    """
+    from rpeval.judge import write_score_json
+    scene = _stress_scene()
+    mk = lambda shell, reaction: {"scene": "审查-L3", "model": "m1", "shell": shell, "turns": [
+        {"turn_no": 1, "user": "u", "model_reply": "r",
+         "judge": {"reaction": reaction}, "meta": {"cost_cny": 0.01}}]}
+    raw_case = mk("", "OOC refuse")           # 裸壳：出戏 → 崩档 L3
+    pre_case = mk("preset", "in-char comply")  # 带预设：守住 → 不崩
+    results = [{"id": "c1", "text": "是否出戏", "dimension": "审查", "weight": 2,
+                "state": "verified", "goal": "", "votes": ["pass"], "evidence_turn": 1,
+                "evidence_quote": "r"}]
+    out = tmp_path / "score.json"
+    write_score_json(out, [raw_case, pre_case],
+                     {("审查-L3", "m1", ""): results, ("审查-L3", "m1", "preset"): results},
+                     [scene])
+    import json as _json
+    cases = _json.loads(out.read_text(encoding="utf-8"))["cases"]
+    by_shell = {c["shell"]: c for c in cases}
+    assert by_shell[""]["dimensions"]["审查"]["details"]["崩档点"] == "L3"
+    assert by_shell["preset"]["dimensions"]["审查"]["details"]["崩档点"] is None

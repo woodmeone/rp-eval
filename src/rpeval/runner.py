@@ -113,13 +113,15 @@ def _cost(model: ModelCfg, usage: dict[str, Any]) -> float:
     return round(pin / 1000 * model.price_per_1k_in + pout / 1000 * model.price_per_1k_out, 6)
 
 
-def case_key(case: dict[str, Any]) -> tuple[str, str]:
-    return (case["scene"], case["model"])
+def case_key(case: dict[str, Any]) -> tuple[str, str, str]:
+    """断点续跑的判重键。**必须含 shell**——同一题卡同一模型的两个外壳是两件事，
+    少这一维会让第二遍被当成"已完成"直接跳过，而且不报错。"""
+    return (case["scene"], case["model"], case.get("shell", ""))
 
 
-def load_done_cases(run_dir: Path) -> set[tuple[str, str]]:
-    """断点续跑：读已有 dialogue.jsonl，返回已完成 (scene, model) 集合。"""
-    done: set[tuple[str, str]] = set()
+def load_done_cases(run_dir: Path) -> set[tuple[str, str, str]]:
+    """断点续跑：读已有 dialogue.jsonl，返回已完成 (scene, model, shell) 集合。"""
+    done: set[tuple[str, str, str]] = set()
     f = Path(run_dir) / "dialogue.jsonl"
     if not f.is_file():
         return done
@@ -147,16 +149,21 @@ async def run(
     client_factory: Any,
     run_dir: Path,
     on_turn: Any | None = None,
+    *,
+    shells: tuple[str, ...] = (SHELL_RAW,),
 ) -> list[dict[str, Any]]:
-    """多模型并发（asyncio.gather），单模型内 case 串行；跳过已完成 case。"""
+    """多模型并发（asyncio.gather），单模型内 case 串行；跳过已完成 case。
+
+    `shells` 有多个值时，同一题卡会被每个外壳各跑一遍（同 run 内可对照）。
+    """
     import asyncio
 
     done = load_done_cases(Path(run_dir))
-    todo = [m for m in models if (scene.id, m.model_id) not in done]
+    todo = [(m, sh) for m in models for sh in shells if (scene.id, m.model_id, sh) not in done]
 
-    async def one(m: ModelCfg) -> dict[str, Any]:
-        case = await build_case_async(scene, m, client_factory(m), on_turn)
+    async def one(m: ModelCfg, sh: str) -> dict[str, Any]:
+        case = await build_case_async(scene, m, client_factory(m), on_turn, shell=sh)
         append_case(Path(run_dir), case)
         return case
 
-    return list(await asyncio.gather(*(one(m) for m in todo)))
+    return list(await asyncio.gather(*(one(m, sh) for m, sh in todo)))

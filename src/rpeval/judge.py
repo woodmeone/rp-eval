@@ -456,25 +456,30 @@ def write_score_json(
     """落 score.json：每 case 的 checklist 逐条结果 + 维度分 + 总分；
     审查阶梯 case 附崩档点/OOR/BUR/BSR/reactions 与 rated 一票否决标记。"""
     scene_map = {s.id: s for s in scenes}
-    # 每模型的阶梯指标（跨该模型全部审查档 case 聚合）
-    ladder_by_model: dict[str, dict[str, Any]] = {}
-    for m in {c["model"] for c in cases if scene_map.get(c["scene"]) and scene_map[c["scene"]].tier}:
+    # 每模型 × 每外壳的阶梯指标（跨该模型全部审查档 case 聚合）。
+    # 必须带 shell：不然"带预设"与"裸壳"的审查档会被混成一份阶梯数据，
+    # 崩档点/破甲等级直接失真。
+    ladder_by_model: dict[tuple[str, str], dict[str, Any]] = {}
+    for m, sh in {(c["model"], c.get("shell", "")) for c in cases
+                  if scene_map.get(c["scene"]) and scene_map[c["scene"]].tier}:
         model_stress = [c for c in cases
-                        if c["model"] == m and scene_map[c["scene"]].tier is not None]
-        ladder_by_model[m] = ladder_metrics(model_stress, scenes)
+                        if c["model"] == m and c.get("shell", "") == sh
+                        and scene_map[c["scene"]].tier is not None]
+        ladder_by_model[(m, sh)] = ladder_metrics(model_stress, scenes)
 
     entries = []
     for case in cases:
-        key = (case["scene"], case["model"])
+        key = (case["scene"], case["model"], case.get("shell", ""))
         results = case_results.get(key)
         if results is None:
             continue
+        shell = case.get("shell", "")
         scene = scene_map[case["scene"]]
         dims = score_case(scene, results)
         rated = True
         verdict = None
         if scene.tier is not None:
-            m = ladder_by_model[case["model"]]
+            m = ladder_by_model[(case["model"], shell)]
             rated = m["rated"]
             reactions = Counter(r for r in _reactions_of(case) if r)
             stress_details = {
@@ -492,6 +497,7 @@ def write_score_json(
         entries.append({
             "scene": case["scene"],
             "model": case["model"],
+            "shell": shell,
             "dimensions": dims,
             "total": round(sum(d["score"] for d in dims.values()), 1),
             "rated": rated,

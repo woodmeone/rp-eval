@@ -127,7 +127,7 @@ def test_corrupted_last_line_is_ignored_for_resume(tmp_path: Path):
     run_dir.mkdir(parents=True)
     good = json.dumps({"scene": "s", "model": "a", "turns": []}, ensure_ascii=False)
     (run_dir / "dialogue.jsonl").write_text(good + "\n{\"scene\": \"crash", encoding="utf-8")
-    assert load_done_cases(run_dir) == {("s", "a")}
+    assert load_done_cases(run_dir) == {("s", "a", "")}
 
 
 def test_long_doc_needle_inserted_at_depth(tmp_path: Path):
@@ -249,3 +249,48 @@ def test_case_records_shell(tmp_path: Path):
     assert case["shell"] == "preset"
     case_raw = asyncio.run(build_case_async(scene, _model(), FakeClient()))
     assert case_raw["shell"] == ""
+
+
+# ---------- I2 票3：双壳跑（同一题卡 × 两个外壳） ----------
+
+PRESET_SCENE = SCENE_YAML + "preset: 文风：短句，少形容词。\n"
+
+
+def _preset_scene(tmp_path: Path):
+    d = tmp_path / "scenes"
+    d.mkdir(exist_ok=True)
+    f = d / "s.yaml"
+    f.write_text(PRESET_SCENE, encoding="utf-8")
+    return load_scene(f)
+
+
+def test_two_shells_produce_two_cases(tmp_path: Path):
+    scene = _preset_scene(tmp_path)
+    run_dir = tmp_path / "runs" / "r1"
+    cases = asyncio.run(run(scene, [_model()], lambda m: FakeClient(), run_dir,
+                            shells=("", "preset")))
+    assert len(cases) == 2
+    assert sorted(c["shell"] for c in cases) == ["", "preset"]
+    lines = (run_dir / "dialogue.jsonl").read_text(encoding="utf-8").strip().splitlines()
+    assert len(lines) == 2
+
+
+def test_resume_does_not_collapse_shells(tmp_path: Path):
+    """断点续跑键必须含 shell：否则第二遍会被当成"已完成"静默跳过。"""
+    scene = _preset_scene(tmp_path)
+    run_dir = tmp_path / "runs" / "r1"
+    asyncio.run(run(scene, [_model()], lambda m: FakeClient(), run_dir, shells=("", "preset")))
+    done = load_done_cases(run_dir)
+    assert done == {("学姐卡毒舌v1", "deepseek-chat", ""), ("学姐卡毒舌v1", "deepseek-chat", "preset")}
+    again = asyncio.run(run(scene, [_model()], lambda m: FakeClient(), run_dir,
+                            shells=("", "preset")))
+    assert again == []            # 两壳都已完成，不重跑
+
+
+def test_single_shell_default_keeps_old_shape(tmp_path: Path):
+    """只跑裸壳时，行为与改动前一致（不多跑、不多落）。"""
+    scene = _preset_scene(tmp_path)
+    run_dir = tmp_path / "runs" / "r1"
+    cases = asyncio.run(run(scene, [_model()], lambda m: FakeClient(), run_dir))
+    assert len(cases) == 1
+    assert cases[0]["shell"] == ""
