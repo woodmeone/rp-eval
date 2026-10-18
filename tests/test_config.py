@@ -40,6 +40,52 @@ def test_load_models_returns_judge_and_pool(tmp_path: Path):
     assert cfg.models[0].label == "DeepSeek"
 
 
+# ---------- I2 票1：资料（世界书）与预设两个可选字段 ----------
+
+SCENE_BASE = """\
+id: t1
+card: {name: 学姐, description: d, scenario: sc, first_mes: hi}
+user_script:
+  - {turn: 1, text: "你好"}
+checklist:
+  - {id: c1, text: 是否出戏, dimension: 审查, weight: 2}
+"""
+
+
+def test_lore_and_preset_default_to_empty(tmp_path: Path):
+    """旧题卡不加字段照常跑——这是向后兼容的底线。"""
+    s = load_scenes(_write(tmp_path, "s.yaml", SCENE_BASE).parent)[0]
+    assert s.lore == ""
+    assert s.preset == ""
+
+
+def test_lore_and_preset_are_parsed(tmp_path: Path):
+    text = SCENE_BASE + 'lore: |\n  深水城在剑湾北岸。\n  贵族分五家。\npreset: 文风：短句，少形容词。\n'
+    (tmp_path / "s.yaml").write_text(text, encoding="utf-8")
+    s = load_scenes(tmp_path)[0]
+    assert "深水城" in s.lore and "贵族分五家" in s.lore
+    assert s.preset == "文风：短句，少形容词。"
+
+
+def test_lore_type_error_names_file_and_field(tmp_path: Path):
+    """YAML 里写成列表要当场报错，不许静默 str() 成一段看不懂的提示词。"""
+    text = SCENE_BASE + "lore:\n  - 条一\n  - 条二\n"
+    (tmp_path / "s.yaml").write_text(text, encoding="utf-8")
+    with pytest.raises(ConfigError) as e:
+        load_scenes(tmp_path)
+    assert "s.yaml" in str(e.value)
+    assert "lore" in str(e.value)
+
+
+def test_preset_type_error_names_file_and_field(tmp_path: Path):
+    text = SCENE_BASE + "preset: {a: 1}\n"
+    (tmp_path / "s.yaml").write_text(text, encoding="utf-8")
+    with pytest.raises(ConfigError) as e:
+        load_scenes(tmp_path)
+    assert "s.yaml" in str(e.value)
+    assert "preset" in str(e.value)
+
+
 def test_load_models_parses_price_fields(tmp_path: Path):
     """回归：price_per_1k_in/out 必须被解析（否则成本读数恒为0）。"""
     priced = VALID_MODELS.replace(
@@ -245,3 +291,40 @@ def _mk(tmp_path: Path) -> Path:
     d = tmp_path / "scenes"
     d.mkdir(exist_ok=True)
     return d
+
+
+# ---------- I3 票1：judge 温度必须为 0 ----------
+
+JUDGE_TEMP = """\
+judge: {model_id: qwen-plus, provider: qwen, base_url: https://x/v1, key_env: K, temperature: %s}
+models:
+  - {model_id: deepseek-chat, provider: deepseek, base_url: https://x/v1, key_env: K}
+"""
+
+
+def test_judge_temperature_defaults_to_zero(tmp_path: Path):
+    """没写 temperature 时补 0，而不是沿用被测模型的 0.7 默认值。"""
+    text = """\
+judge: {model_id: qwen-plus, provider: qwen, base_url: https://x/v1, key_env: K}
+models:
+  - {model_id: deepseek-chat, provider: deepseek, base_url: https://x/v1, key_env: K}
+"""
+    cfg = load_models(_write(tmp_path, "models.yaml", text))
+    assert cfg.judge.temperature == 0.0
+
+
+def test_judge_temperature_nonzero_rejected(tmp_path: Path):
+    with pytest.raises(ConfigError) as e:
+        load_models(_write(tmp_path, "models.yaml", JUDGE_TEMP % "0.7"))
+    assert "judge.temperature" in str(e.value)
+
+
+def test_judge_temperature_zero_accepted(tmp_path: Path):
+    cfg = load_models(_write(tmp_path, "models.yaml", JUDGE_TEMP % "0.0"))
+    assert cfg.judge.temperature == 0.0
+
+
+def test_tested_models_may_keep_their_temperature(tmp_path: Path):
+    """被测模型的温度不受这条约束——它本来就该有随机性。"""
+    cfg = load_models(_write(tmp_path, "models.yaml", JUDGE_TEMP % "0.0"))
+    assert cfg.models[0].temperature == 0.7

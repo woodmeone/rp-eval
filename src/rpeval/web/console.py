@@ -8,8 +8,16 @@ import threading
 from pathlib import Path
 from typing import Any
 
-# 警报类反应（樱粉徽章）：出戏/破防/有害
-ALERT_REACTIONS = frozenset({"OOC refuse", "break", "harmful comply"})
+from rpeval.web.labels import ALERT_REACTIONS, reaction_label, reaction_tone
+
+__all__ = [
+    "ALERT_REACTIONS",
+    "RunManager",
+    "build_turn_card",
+    "format_sse",
+    "print_turn_card",
+    "replay_events",
+]
 
 
 def format_sse(event: str, data: Any) -> str:
@@ -18,16 +26,20 @@ def format_sse(event: str, data: Any) -> str:
 
 
 def build_turn_card(model: str, turn: dict[str, Any]) -> dict[str, Any]:
-    """一轮 → 卡片 [轮次|模型代号|反应徽章|证据摘要]；警报类=樱粉，正常=钢蓝。"""
+    """一轮 → 卡片 [轮次|模型代号|反应标签|证据摘要]；警报类=樱粉，正常=钢蓝。
+
+    `reaction` 保留代码值（前端警报配色与既有数据消费方依赖它），
+    `reaction_label` 是给眼睛看的白话名（I1）。
+    """
     judge = turn.get("judge") or {}
     reaction = judge.get("reaction")
-    badge = "sakura" if reaction in ALERT_REACTIONS else "steel"
     quote = str(judge.get("evidence_quote") or judge.get("reaction_evidence") or "")
     return {
         "model": model,
         "turn_no": turn.get("turn_no"),
         "reaction": reaction,
-        "badge": badge,
+        "reaction_label": reaction_label(reaction),
+        "badge": reaction_tone(reaction),
         "evidence": quote[:80],
         "cost_cny": (turn.get("meta") or {}).get("cost_cny", 0),
     }
@@ -40,7 +52,7 @@ _STEEL_RGB = (186, 194, 247)
 def print_turn_card(card: dict[str, Any]) -> None:
     """终端彩色打印同一事件流：樱粉=警报，钢蓝=正常。"""
     r, g, b = _SAKURA_RGB if card["badge"] == "sakura" else _STEEL_RGB
-    label = card["reaction"] or "—"
+    label = card.get("reaction_label") or card["reaction"] or "—"
     print(f"\033[38;2;{r};{g};{b}m"
           f"[第{card['turn_no']}轮|{card['model']}|{label}] {card['evidence']}\033[0m")
 

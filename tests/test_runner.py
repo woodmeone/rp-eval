@@ -127,7 +127,7 @@ def test_corrupted_last_line_is_ignored_for_resume(tmp_path: Path):
     run_dir.mkdir(parents=True)
     good = json.dumps({"scene": "s", "model": "a", "turns": []}, ensure_ascii=False)
     (run_dir / "dialogue.jsonl").write_text(good + "\n{\"scene\": \"crash", encoding="utf-8")
-    assert load_done_cases(run_dir) == {("s", "a")}
+    assert load_done_cases(run_dir) == {("s", "a", "")}
 
 
 def test_long_doc_needle_inserted_at_depth(tmp_path: Path):
@@ -181,3 +181,116 @@ def test_payload_reaches_long_doc_needle(tmp_path: Path):
     scene = load_scene(f)
     case = asyncio.run(build_case_async(scene, _model(), FakeClient()))
     assert "暗号 蓝鲸7749" in case["turns"][1]["user"]  # 场景级 payload 注入针
+
+
+# ---------- I2 票2：提示词装配（预设 / 资料） ----------
+
+LEGACY_SYSTEM = "角色：毒舌学姐\n简介：嘴硬心软\n场景：活动室\n请以角色身份进行 RP 对话。"
+
+
+def test_legacy_prompt_is_byte_identical(tmp_path: Path):
+    """回归底线：无 lore / 无 preset 的旧题卡，拼出来必须与改动前逐字节一样。
+
+    加字段不许悄悄改变任何既有 run 的输入——否则历史结论与新结论不可比。
+    """
+    scene = _scene(tmp_path)
+    client = FakeClient()
+    asyncio.run(build_case_async(scene, _model(), client))
+    assert client.histories[0][0]["content"] == LEGACY_SYSTEM
+
+
+def test_lore_goes_under_background_section(tmp_path: Path):
+    d = tmp_path / "scenes"
+    d.mkdir(exist_ok=True)
+    f = d / "s.yaml"
+    f.write_text(SCENE_YAML + 'lore: |\n  深水城在剑湾北岸。\n  贵族分五家。\n', encoding="utf-8")
+    scene = load_scene(f)
+    client = FakeClient()
+    asyncio.run(build_case_async(scene, _model(), client))
+    sys = client.histories[0][0]["content"]
+    assert "【背景资料】" in sys
+    assert "深水城在剑湾北岸" in sys
+    # 资料在卡面之后、收尾指令之前
+    assert sys.index("活动室") < sys.index("【背景资料】") < sys.index("请以角色身份进行 RP 对话。")
+    # 资料本身不改变既有前缀
+    assert sys.startswith(LEGACY_SYSTEM.split("请以角色身份")[0].rstrip())
+
+
+def test_preset_only_applies_in_preset_shell(tmp_path: Path):
+    d = tmp_path / "scenes"
+    d.mkdir(exist_ok=True)
+    f = d / "s.yaml"
+    f.write_text(SCENE_YAML + "preset: 文风：短句，少形容词。\n", encoding="utf-8")
+    scene = load_scene(f)
+
+    raw = FakeClient()
+    asyncio.run(build_case_async(scene, _model(), raw, shell=""))
+    assert raw.histories[0][0]["content"] == LEGACY_SYSTEM      # 裸壳不带预设
+
+    pre = FakeClient()
+    asyncio.run(build_case_async(scene, _model(), pre, shell="preset"))
+    sys = pre.histories[0][0]["content"]
+    assert sys.startswith("文风：短句，少形容词。")
+    assert sys.endswith("请以角色身份进行 RP 对话。")
+    assert "毒舌学姐" in sys
+
+
+def test_preset_shell_without_preset_text_is_same_as_raw(tmp_path: Path):
+    """勾了带预设但题卡没写预设：不许留一个空行在当前提示词头部。"""
+    scene = _scene(tmp_path)
+    client = FakeClient()
+    asyncio.run(build_case_async(scene, _model(), client, shell="preset"))
+    assert client.histories[0][0]["content"] == LEGACY_SYSTEM
+
+
+def test_case_records_shell(tmp_path: Path):
+    scene = _scene(tmp_path)
+    case = asyncio.run(build_case_async(scene, _model(), FakeClient(), shell="preset"))
+    assert case["shell"] == "preset"
+    case_raw = asyncio.run(build_case_async(scene, _model(), FakeClient()))
+    assert case_raw["shell"] == ""
+
+
+# ---------- I2 票3：双壳跑（同一题卡 × 两个外壳） ----------
+
+PRESET_SCENE = SCENE_YAML + "preset: 文风：短句，少形容词。\n"
+
+
+def _preset_scene(tmp_path: Path):
+    d = tmp_path / "scenes"
+    d.mkdir(exist_ok=True)
+    f = d / "s.yaml"
+    f.write_text(PRESET_SCENE, encoding="utf-8")
+    return load_scene(f)
+
+
+def test_two_shells_produce_two_cases(tmp_path: Path):
+    scene = _preset_scene(tmp_path)
+    run_dir = tmp_path / "runs" / "r1"
+    cases = asyncio.run(run(scene, [_model()], lambda m: FakeClient(), run_dir,
+                            shells=("", "preset")))
+    assert len(cases) == 2
+    assert sorted(c["shell"] for c in cases) == ["", "preset"]
+    lines = (run_dir / "dialogue.jsonl").read_text(encoding="utf-8").strip().splitlines()
+    assert len(lines) == 2
+
+
+def test_resume_does_not_collapse_shells(tmp_path: Path):
+    """断点续跑键必须含 shell：否则第二遍会被当成"已完成"静默跳过。"""
+    scene = _preset_scene(tmp_path)
+    run_dir = tmp_path / "runs" / "r1"
+    asyncio.run(run(scene, [_model()], lambda m: FakeClient(), run_dir, shells=("", "preset")))
+    done = load_done_cases(run_dir)
+    assert done == {("学姐卡毒舌v1", "deepseek-chat", ""), ("学姐卡毒舌v1", "deepseek-chat", "preset")}
+    again = asyncio.run(run(scene, [_model()], lambda m: FakeClient(), run_dir,
+                            shells=("", "preset")))
+    assert again == []            # 两壳都已完成，不重跑
+
+
+def test_single_shell_default_keeps_old_shape(tmp_path: Path):
+    """只跑裸壳时，行为与改动前一致（不多跑、不多落）。"""
+    scene = _preset_scene(tmp_path)
+    run_dir = tmp_path / "runs" / "r1"
+    cases = asyncio.run(run(scene, [_model()], lambda m: FakeClient(), run_dir))
+    assert len(cases) == 1
+    assert cases[0]["shell"] == ""

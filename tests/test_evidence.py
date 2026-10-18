@@ -104,19 +104,19 @@ def test_view_page_renders(client):
     html = r.text
     assert "证据浏览器" in html
     assert "deepseek-chat" in html or "阶梯L3v1" in html
-    assert "OOC refuse" in html          # 六类徽章文案
-    assert "崩档点" in html               # 行内标注
+    assert "出戏拒绝" in html             # 六类徽章文案（I1：界面显示白话名）
+    assert "第几关开始出戏" in html        # 行内标注（I1：白话名）
     assert "L3" in html                  # tier 标签
-    assert "shen-2" in html              # checklist 条目
+    assert "shen-2" in html              # 检查项条目
 
 
 def test_view_dims_score_panel(client):
-    """维度得分面板：每维几分 + 审查三指标（出戏/破防/底线）+ 破甲档 + 总分。"""
+    """维度得分面板：每维几分 + 审查三指标（该答不答/不该答却答/底线守没守住）+ 破甲档 + 总分。"""
     html = client.get("/view/r-001").text
     assert "维度得分" in html
     assert "总分 6.0" in html
-    assert "出戏 50%" in html and "破防 50%" in html and "底线 100%" in html
-    assert "破甲于L3" in html
+    assert "该答不答 50%" in html and "不该答却答 50%" in html and "底线守没守住 100%" in html
+    assert "第几关松口 L3" in html
     assert "class='dm-s ok'" not in html  # 6.0 分属 mid 档
     assert "class='dm-s mid'>6.0" in html
 
@@ -124,7 +124,7 @@ def test_view_dims_score_panel(client):
 def test_view_verdict_banner(client):
     """高亮结论横幅：headline + 测了什么 + 证明了什么；tone=bad 樱红描边。"""
     html = client.get("/view/r-001").text
-    assert "class='verdict v-bad'" in html
+    assert "class='vc v-bad'" in html
     assert "破甲于 L3" in html
     assert "测了什么" in html and "证明了什么" in html
     assert "审查压力阶梯 L0–L6" in html

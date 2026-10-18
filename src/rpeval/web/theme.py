@@ -223,6 +223,22 @@ _CONSOLE_STYLE = """\
 """
 
 
+def _dim_descriptions() -> dict[str, str]:
+    """维度 → 一句人话说明（控制台分组下方展示）。
+
+    抽成函数是为了能被测试引用：新增维度却忘了写说明时，测试会先红，
+    而不是等用户打开控制台看见一个光秃秃的维度名。
+    """
+    return {
+        "审查": "摸底三题（正常聊 / 说了狠话但没恶意 / 让你两难）＋ 破甲四级（装个没限制的角色 / 说这是在写小说 / 一轮一轮软磨硬泡 / 全上一遍还换说法）。看第几关开始出戏、第几关松口。",
+        "抢话": "你不说话时它替不替你说话/演动作；以及正面那一半——它会不会自己把话接住、把场子撑起来",
+        "记忆": "跨轮设定记不记得、立场一致不一致；给了资料能不能答对、资料外的会不会瞎编；长文档里埋的针能不能捞到",
+        "入戏": "演久了还是不是同一个人：时代穿帮 / 突然说教 / 口癖与称呼漂移",
+        "文笔": "AI味检测：黑名单词 / 议论抒情收尾 / 排比三连；接文风预设 vs 不接，差多少",
+        "格式": "卡格式遵从：maintext 包裹 / 状态栏五字段 / 变量 JSON / 选项块 / HTML 配平 / 长对话不掉格式（全程序化，不走 LLM）",
+    }
+
+
 def render_console(models: ModelsConfig | None, scenes: list[Scene]) -> str:
     """控制台页：左列勾模型/题卡（按维度分组）+ 预估成本；右列 SSE 实时流。"""
     if models is None:
@@ -233,16 +249,7 @@ def render_console(models: ModelsConfig | None, scenes: list[Scene]) -> str:
             for m in models.models)
     # 题卡按维度分组（一卡可属多维→归到首个 checklist 维度）
     from collections import defaultdict
-    dim_desc = {
-        "审查": "压力阶梯 L0-L6：同一角色喂越来越过分的话术，看第几档崩（崩档点）/被破（破甲等级）。L0基线 L1安全隐喻 L2灰色抉择 L3人设注入 L4小说嵌套 L5多轮升温 L6红线组合",
-        "代打": "用户沉默时模型是否替\"你\"说话/替你行动",
-        "舔狗": "用户无理自贬时是否顺杆爬/跳出人设当心理咨询师",
-        "记忆": "长跨度设定（过敏/代号/数字）是否记得且立场一致",
-        "入戏": "时代探针：现代事物钓古人角色，接梗即崩",
-        "文笔": "AI味检测：黑名单词/议论抒情收尾/排比三连",
-        "格式": "程序化校验（不走LLM）：JSON可解析/HTML配平/字数/正则模板抓取完整性",
-        "长上下文": "大海捞针：长文档中段插针召回（Lost-in-the-Middle）+ 无字面提示的隐性检索",
-    }
+    dim_desc = _dim_descriptions()
     groups: dict[str, list[Scene]] = defaultdict(list)
     for s in scenes:
         dim = s.checklist[0].dimension if s.checklist else "其他"
@@ -275,7 +282,10 @@ def render_console(models: ModelsConfig | None, scenes: list[Scene]) -> str:
       <div id="models">{model_boxes}</div>
       <h2 style="margin-top:18px">题卡（按维度）</h2>
       <div id="scenes">{scene_boxes}</div>
-      <div class="cost">预估成本：<b id="cost">¥0.00</b>（题数×模型数×均价）</div>
+      <h2 style="margin-top:18px">外壳</h2>
+      <label><input type="checkbox" class="pick-outer" value="preset">带预设（同题再跑一遍，榜单出差值）</label>
+      <div class="cost">不勾＝只跑裸壳（与以前一致）。勾上＝同一题卡跑两遍，多花一倍。</div>
+      <div class="cost">预估成本：<b id="cost">¥0.00</b>（题数×模型数×外壳数×均价）</div>
       <button id="go">开始测评</button>
     </div>
     <div class="col-right">
@@ -293,7 +303,8 @@ const prog = document.getElementById("prog");
 function picked(sel) {{ return [...document.querySelectorAll(sel+":checked")].map(e=>e.value); }}
 function updateCost() {{
   const nm = picked(".pick-model").length, ns = picked(".pick-scene").length;
-  document.getElementById("cost").textContent = "¥" + (nm*ns*0.02).toFixed(2);
+  const nsh = 1 + picked(".pick-outer").length;
+  document.getElementById("cost").textContent = "¥" + (nm*ns*nsh*0.02).toFixed(2);
 }}
 document.querySelectorAll("input").forEach(e=>e.addEventListener("change", updateCost));
 updateCost();
@@ -302,7 +313,7 @@ function addCard(c) {{
   const alert = ALERT.has(c.reaction);
   div.className = "card " + (alert ? "sakura" : "steel");
   div.innerHTML = `<span class="tag">第${{c.turn_no}}轮 · ${{c.model}}</span>`
-    + `<span class="badge">${{c.reaction || "—"}}</span>`
+    + `<span class="badge">${{c.reaction_label || "—"}}</span>`
     + `<span>${{c.evidence || ""}}</span>`;
   stream.prepend(div);
 }}
@@ -314,10 +325,11 @@ function addMsg(text, cls) {{
 }}
 go.addEventListener("click", async () => {{
   const models = picked(".pick-model"), scenes = picked(".pick-scene");
+  const shells = [""].concat(picked(".pick-outer"));
   if (!models.length || !scenes.length) {{ addMsg("请先勾选至少一个模型和一张题卡", "sakura"); return; }}
   go.disabled = true; stream.innerHTML = "";
   const r = await fetch("/api/start", {{method:"POST", headers:{{"content-type":"application/json"}},
-    body: JSON.stringify({{models, scenes}})}});
+    body: JSON.stringify({{models, scenes, shells}})}});
   if (r.status === 409) {{ addMsg("已有 run 在跑，请等待", "sakura"); go.disabled=false; return; }}
   if (!r.ok) {{ const j = await r.json().catch(()=>({{}})); addMsg("启动失败：" + (j.error||r.status), "sakura"); go.disabled=false; return; }}
   addMsg("测评已启动，等待首轮判定…");
@@ -338,10 +350,50 @@ go.addEventListener("click", async () => {{
 def render_leaderboard(data: dict) -> str:
     """榜单页：总分排名表（rated=false 标"不予推荐评级"）→ 每维得分条 → 细节锤点 → 图表内嵌 → Elo+胜率矩阵。"""
     import html as _h
-    import json
+    from rpeval.web.labels import metric_label, metric_value, reaction_counts_text
     esc = _h.escape
+
+    def details_html(det: object) -> str:
+        """细节锤点 → 白话键值对。
+
+        形状由 `leaderboard.build_leaderboard` 决定：**list[dict]**（同模型同维多个 case），
+        因此这里两种形状都吃——不假设调用方永远只给 dict。
+        原先直接 `json.dumps` 原文，键名就是 OOR/BUR/BSR/verified 这些缩写（I1）；
+        现在键走 `metric_label`、值走 `metric_value`（比例转百分比、列表转顿号）。
+        """
+        blocks = det if isinstance(det, list) else [det]
+        out = []
+        for b in blocks:
+            if not isinstance(b, dict):
+                continue
+            rows = []
+            for k, v in b.items():
+                if isinstance(v, list) and not v:
+                    continue
+                if k == "reactions" and isinstance(v, dict):
+                    shown = reaction_counts_text(v)
+                else:
+                    shown = metric_value(k, v)
+                rows.append(f"<div class='hm-row'><b>{esc(metric_label(k))}</b>"
+                            f"<span>{esc(shown)}</span></div>")
+            if rows:
+                out.append(f"<div class='hm'>{''.join(rows)}</div>")
+        return "".join(out) if out else "<div class='hm'>—</div>"
+
     rows = []
     all_v = data.get("verdicts", {})
+
+    def _delta_cell(delta: object) -> str:
+        """预设差值：没跑两壳时给破折号，不写 0。
+
+        0 会被读成"预设没用"，那是在替数据编结论；没测就该显示"没测"。
+        """
+        if delta is None:
+            return "<span class='dlt-none'>—</span>"
+        cls = "dlt-up" if delta > 0 else ("dlt-down" if delta < 0 else "dlt-zero")
+        sign = "+" if delta > 0 else ""
+        return f"<span class='{cls}'>{sign}{delta}</span>"
+
     _worst = {"bad": 2, "mid": 1, "ok": 0}
     for m in data.get("models", []):
         flag = "" if m.get("rated", True) else "<span class='norec'>不予推荐评级</span>"
@@ -351,7 +403,7 @@ def render_leaderboard(data: dict) -> str:
             for d, v in sorted(m.get("dimensions", {}).items()))
         hammers = data.get("hammers", {}).get(m["model"], {})
         hammer_html = "".join(
-            f"<details><summary>{esc(dim)} 锤点</summary><pre>{esc(json.dumps(hs, ensure_ascii=False))}</pre></details>"
+            f"<details><summary>{esc(dim)} 锤点</summary>{details_html(hs)}</details>"
             for dim, hs in hammers.items()) if hammers else ""
         vs = all_v.get(m["model"], [])
         if vs:
@@ -368,6 +420,7 @@ def render_leaderboard(data: dict) -> str:
             verdict_html = "<span class='lb-none'>—</span>"
         rows.append(
             f"<tr><td>{esc(m['model'])}{flag}</td><td class='tot'>{m['total']}</td>"
+            f"<td>{_delta_cell(m.get('preset_delta'))}</td>"
             f"<td>{bars}</td><td>{verdict_html}</td><td>{hammer_html}</td></tr>")
     elo = data.get("elo", {})
     ci = data.get("elo_ci", {})
@@ -390,7 +443,7 @@ def render_leaderboard(data: dict) -> str:
         main = ("<div class='empty'>还没有测评数据——先跑一轮测评，榜单会自动生成。<br><br>"
                 "<a class='btn primary' href='/console'>去控制台开跑 →</a></div>")
     else:
-        main = f"""<table><tr><th>模型</th><th>总分/60</th><th>每维 0–10</th><th>结论</th><th>细节锤点</th></tr>{''.join(rows)}</table>
+        main = f"""<table><tr><th>模型</th><th>总分/60</th><th>预设差值</th><th>每维 0–10</th><th>结论</th><th>细节锤点</th></tr>{''.join(rows)}</table>
 <h2 style="color:var(--steel);margin-top:20px">Elo（BT 强度 · 95% CI）</h2>
 <table><tr><th>模型</th><th>强度</th><th>CI</th></tr>{elo_rows or '<tr><td colspan=3>无 battle 数据</td></tr>'}</table>
 <h2 style="color:var(--steel);margin-top:20px">胜率矩阵（行对列）</h2>
@@ -409,6 +462,10 @@ th, td {{ border:1px solid rgba(186,194,247,.3); padding:8px; text-align:left; v
 .dimbar i {{ display:block; height:8px; background:var(--steel); transition: width .6s steps(12); }}
 .dimbar b {{ color:var(--paper); }}
 .tot {{ color:var(--sakura); font-size:14px; }}
+.dlt-up {{ color:var(--steel); }}
+.dlt-down {{ color:var(--sakura); }}
+.dlt-zero {{ color:rgba(251,253,253,.6); }}
+.dlt-none {{ color:rgba(251,253,253,.25); }}
 .lb-sum {{ display:flex; flex-direction:column; gap:4px; }}
 .lb-v {{ padding:3px 8px; font-size:10px; border-left:3px solid var(--steel); background:rgba(186,194,247,.08); }}
 .lb-v.lb-v-ok {{ border-left-color:var(--steel); color:var(--steel); }}
@@ -421,6 +478,10 @@ th, td {{ border:1px solid rgba(186,194,247,.3); padding:8px; text-align:left; v
 .v-dot.ok {{ background:var(--steel); }} .v-dot.bad {{ background:var(--sakura); }}
 img {{ max-width:48%; border:2px solid var(--steel); margin:8px 0; }}
 details pre {{ color:#8a90b8; font-size:9px; }}
+.hm {{ display:flex; flex-direction:column; gap:2px; }}
+.hm-row {{ display:flex; gap:6px; font-size:9px; line-height:1.7; }}
+.hm-row b {{ color:var(--steel); min-width:5.5em; font-weight:normal; }}
+.hm-row span {{ color:rgba(251,253,253,.75); }}
 .empty {{ text-align:center; padding:60px 20px; font-size:11px; line-height:2.2; color:rgba(251,253,253,.7); }}
 </style></head><body>
 {render_nav("/leaderboard")}

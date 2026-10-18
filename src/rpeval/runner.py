@@ -15,17 +15,51 @@ class ChatClient(Protocol):
         ...
 
 
+# ---------- I2：外壳（预设）开关 ----------
+# 裸壳 = 现状（只有卡面三行 + 收尾指令）；带预设 = 再把题卡的 preset 文本压在最前。
+# 两个壳可以在同一 run 里各跑一遍，榜单页给出差值——这是"预设到底值多少分"的可测量版本。
+SHELL_RAW = ""
+SHELL_PRESET = "preset"
+SHELLS = (SHELL_RAW, SHELL_PRESET)
+
+
+def _system_prompt(scene: Scene, *, shell: str = SHELL_RAW) -> str:
+    """装配系统提示词：预设 → 卡面 → 背景资料 → 收尾指令。
+
+    顺序是刻意的：**预设压最前**（它是"怎么说话"的总纲），**资料贴着收尾指令**
+    （位置越靠后，模型越不容易把它当背景噪音）。这条顺序写进 CONTEXT.md，见 ADR-0005。
+
+    旧题卡（无 lore / 无 preset）拼出来与改动前**逐字节一致**——这是回归底线：
+    加字段不许悄悄改变任何既有 run 的输入。
+    """
+    parts: list[str] = []
+    if shell == SHELL_PRESET and scene.preset:
+        parts.append(scene.preset)
+    parts.append(
+        f"角色：{scene.card.name}\n简介：{scene.card.description}\n场景：{scene.card.scenario}"
+    )
+    if scene.lore:
+        parts.append(f"【背景资料】\n{scene.lore}")
+    parts.append("请以角色身份进行 RP 对话。")
+    return "\n".join(parts)
+
+
 async def build_case_async(
     scene: Scene,
     model: ModelCfg,
     client: ChatClient,
     on_turn: Any | None = None,
+    *,
+    shell: str = SHELL_RAW,
 ) -> dict[str, Any]:
-    """按 user_script 逐轮调用：模型回复进历史，下一轮台词按脚本喂。"""
+    """按 user_script 逐轮调用：模型回复进历史，下一轮台词按脚本喂。
+
+    `shell` 决定用哪个外壳（裸壳 / 带预设），并落进 case 以便区分同题两遍的结果。
+    """
     import time
 
     history: list[dict[str, str]] = [
-            {"role": "system", "content": _system_prompt(scene)},
+            {"role": "system", "content": _system_prompt(scene, shell=shell)},
             {"role": "assistant", "content": scene.card.first_mes},
         ]
     turns: list[dict[str, Any]] = []
@@ -53,7 +87,7 @@ async def build_case_async(
         turns.append(record)
         if on_turn is not None:
             on_turn(record)
-    return {"scene": scene.id, "model": model.model_id, "turns": turns}
+    return {"scene": scene.id, "model": model.model_id, "shell": shell, "turns": turns}
 
 
 def _render_turn(step, scene: Scene | None = None) -> str:
@@ -73,26 +107,21 @@ def _render_turn(step, scene: Scene | None = None) -> str:
     return text + "\n" + body
 
 
-def _system_prompt(scene: Scene) -> str:
-    return (
-        f"角色：{scene.card.name}\n简介：{scene.card.description}\n"
-        f"场景：{scene.card.scenario}\n请以角色身份进行 RP 对话。"
-    )
-
-
 def _cost(model: ModelCfg, usage: dict[str, Any]) -> float:
     pin = usage.get("prompt_tokens", 0) or 0
     pout = usage.get("completion_tokens", 0) or 0
     return round(pin / 1000 * model.price_per_1k_in + pout / 1000 * model.price_per_1k_out, 6)
 
 
-def case_key(case: dict[str, Any]) -> tuple[str, str]:
-    return (case["scene"], case["model"])
+def case_key(case: dict[str, Any]) -> tuple[str, str, str]:
+    """断点续跑的判重键。**必须含 shell**——同一题卡同一模型的两个外壳是两件事，
+    少这一维会让第二遍被当成"已完成"直接跳过，而且不报错。"""
+    return (case["scene"], case["model"], case.get("shell", ""))
 
 
-def load_done_cases(run_dir: Path) -> set[tuple[str, str]]:
-    """断点续跑：读已有 dialogue.jsonl，返回已完成 (scene, model) 集合。"""
-    done: set[tuple[str, str]] = set()
+def load_done_cases(run_dir: Path) -> set[tuple[str, str, str]]:
+    """断点续跑：读已有 dialogue.jsonl，返回已完成 (scene, model, shell) 集合。"""
+    done: set[tuple[str, str, str]] = set()
     f = Path(run_dir) / "dialogue.jsonl"
     if not f.is_file():
         return done
@@ -120,16 +149,21 @@ async def run(
     client_factory: Any,
     run_dir: Path,
     on_turn: Any | None = None,
+    *,
+    shells: tuple[str, ...] = (SHELL_RAW,),
 ) -> list[dict[str, Any]]:
-    """多模型并发（asyncio.gather），单模型内 case 串行；跳过已完成 case。"""
+    """多模型并发（asyncio.gather），单模型内 case 串行；跳过已完成 case。
+
+    `shells` 有多个值时，同一题卡会被每个外壳各跑一遍（同 run 内可对照）。
+    """
     import asyncio
 
     done = load_done_cases(Path(run_dir))
-    todo = [m for m in models if (scene.id, m.model_id) not in done]
+    todo = [(m, sh) for m in models for sh in shells if (scene.id, m.model_id, sh) not in done]
 
-    async def one(m: ModelCfg) -> dict[str, Any]:
-        case = await build_case_async(scene, m, client_factory(m), on_turn)
+    async def one(m: ModelCfg, sh: str) -> dict[str, Any]:
+        case = await build_case_async(scene, m, client_factory(m), on_turn, shell=sh)
         append_case(Path(run_dir), case)
         return case
 
-    return list(await asyncio.gather(*(one(m) for m in todo)))
+    return list(await asyncio.gather(*(one(m, sh) for m, sh in todo)))

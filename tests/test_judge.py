@@ -1,4 +1,4 @@
-"""票04 — judge：TRACE 状态机、n=5 多数票、score.json 聚合换算。"""
+﻿"""票04 — judge：TRACE 状态机、n=5 多数票、score.json 聚合换算。"""
 import asyncio
 import json
 from pathlib import Path
@@ -123,7 +123,7 @@ def test_score_json_written(tmp_path):
     case = _case([_turn(1, "r1"), _turn(2, "x")])
     result = asyncio.run(run_state_machine(scene, case, judge, n=5))
     out = tmp_path / "score.json"
-    write_score_json(out, [case], {("学姐卡毒舌v1", "deepseek-chat"): result}, [scene])
+    write_score_json(out, [case], {("学姐卡毒舌v1", "deepseek-chat", ""): result}, [scene])
     data = json.loads(out.read_text(encoding="utf-8"))
     entry = data["cases"][0]
     assert entry["model"] == "deepseek-chat"

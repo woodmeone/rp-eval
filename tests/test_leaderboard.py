@@ -74,7 +74,7 @@ def test_leaderboard_page_renders(client):
     assert "deepseek-chat" in html
     assert "胜率" in html
     assert "Elo" in html or "BT" in html
-    assert "崩档点" in html                # 细节锤点
+    assert "第几关开始出戏" in html        # 细节锤点（I1：键名走白话映射）
     assert "data:image/png;base64," in html  # 图内嵌
 
 

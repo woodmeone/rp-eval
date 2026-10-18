@@ -10,6 +10,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 
 from rpeval.config import ConfigError, load_models, load_scenes
+from rpeval.runner import SHELL_RAW, SHELLS
 from rpeval.settings import load_dotenv, save_settings, settings_view
 from rpeval.web.theme import render_index, render_console, render_settings
 from rpeval.web.console import RunManager, build_turn_card, format_sse, print_turn_card
@@ -148,6 +149,25 @@ def create_app(config_dir: Path | None = None, client_factory=None) -> FastAPI:
             return HTMLResponse("<h1>run 不存在</h1>", status_code=404)
         return render_view(detail)
 
+    # ---------- 票#2：导出脚本包 ----------
+
+    @app.get("/api/script_pack/{run_id}")
+    def api_script_pack(run_id: str, format: str = "md"):
+        """导出脚本包（I4）。先落盘再下发——数据包要有稳定路径可翻可 grep。"""
+        from fastapi.responses import FileResponse
+
+        from rpeval.export import write_script_pack
+        if format not in ("md", "json"):
+            return JSONResponse({"error": f"format 只支持 md/json，收到 {format!r}"}, status_code=400)
+        _, scenes, _ = _load()
+        paths = write_script_pack(root, run_id, scenes)
+        if paths is None:
+            return JSONResponse({"error": "run 不存在"}, status_code=404)
+        target = next((p for p in paths if p.suffix == ("." + format)), paths[0])
+        media = "text/markdown; charset=utf-8" if format == "md" else "application/json; charset=utf-8"
+        return FileResponse(target, media_type=media,
+                            filename=f"script_pack_{run_id}.{format}")
+
     # ---------- 票08：run 控制 ----------
 
     @app.get("/api/busy")
@@ -189,41 +209,45 @@ def create_app(config_dir: Path | None = None, client_factory=None) -> FastAPI:
         sel_scenes = [s for s in scenes if s.id in set(body.get("scenes", []))]
         if not sel_models or not sel_scenes:
             return JSONResponse({"error": "勾选的模型/题卡无效"}, status_code=400)
+        shells = [s for s in (body.get("shells") or [SHELL_RAW]) if s in SHELLS] or [SHELL_RAW]
         rm = state["rm"]
         if not rm.acquire():
             return JSONResponse({"error": "已有 run 在跑"}, status_code=409)
         rm.reset()
-        rm.set_plan(len(sel_models) * len(sel_scenes))
+        rm.set_plan(len(sel_models) * len(sel_scenes) * len(shells))
         run_dir = root / "runs" / time.strftime("%Y%m%d-%H%M%S")
         factory = client_factory or _default_client_factory()
-        task = asyncio.create_task(_execute_run(rm, factory, models, sel_models, sel_scenes, run_dir))
+        task = asyncio.create_task(
+            _execute_run(rm, factory, models, sel_models, sel_scenes, run_dir, shells))
         task.add_done_callback(lambda t: rm.release())
-        return JSONResponse({"run_dir": str(run_dir)}, status_code=202)
+        return JSONResponse({"run_dir": str(run_dir), "shells": shells}, status_code=202)
 
-    async def _execute_run(rm, factory, models_cfg, sel_models, sel_scenes, run_dir):
+    async def _execute_run(rm, factory, models_cfg, sel_models, sel_scenes, run_dir, shells):
         from rpeval.llm import OpenAICompatClient
         from rpeval.runner import build_case_async, append_case
         from rpeval.judge import LLMJudge, judge_reactions, run_state_machine, write_score_json
 
         judge = LLMJudge(factory(models_cfg.judge))
         all_cases: list[dict] = []
-        case_results: dict[tuple[str, str], list[dict]] = {}
+        case_results: dict[tuple[str, str, str], list[dict]] = {}
         try:
             for scene in sel_scenes:
-                for model in sel_models:
-                    client = factory(model)
-                    case = await build_case_async(scene, model, client)
-                    if scene.tier is not None:
-                        await judge_reactions(scene, case, judge)
-                    # 每完成一轮推一张卡片（审查档含反应，普通档 reaction=None 钢蓝）
-                    for t in case["turns"]:
-                        card = build_turn_card(model.model_id, t)
-                        rm.publish("turn", card)
-                        print_turn_card(card)
-                    append_case(run_dir, case)
-                    all_cases.append(case)
-                    case_results[(scene.id, model.model_id)] = await run_state_machine(scene, case, judge)
-                    rm.mark_case_done()
+                for shell in shells:
+                    for model in sel_models:
+                        client = factory(model)
+                        case = await build_case_async(scene, model, client, shell=shell)
+                        if scene.tier is not None:
+                            await judge_reactions(scene, case, judge)
+                        # 每完成一轮推一张卡片（审查档含反应，普通档 reaction=None 钢蓝）
+                        for t in case["turns"]:
+                            card = build_turn_card(model.model_id, t)
+                            rm.publish("turn", card)
+                            print_turn_card(card)
+                        append_case(run_dir, case)
+                        all_cases.append(case)
+                        case_results[(scene.id, model.model_id, shell)] = await run_state_machine(
+                            scene, case, judge)
+                        rm.mark_case_done()
             write_score_json(Path(run_dir) / "score.json", all_cases, case_results, sel_scenes)
         except Exception as e:  # noqa: BLE001 — run 失败要落事件并释放锁
             rm.publish("error", {"message": str(e)})

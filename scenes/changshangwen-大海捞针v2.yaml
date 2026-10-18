@@ -1,8 +1,11 @@
-# 长上下文题卡 v2：真·长文注入（NIAH 大海捞针）——案例取自公开评测
+﻿# 长上下文题卡 v2：真·长文注入（NIAH 大海捞针）——案例取自公开评测
 # 结构参考：Kamradt Needle-in-a-Haystack(2023) / NeedleBench(arXiv:2407.11963)
 #   / NoLiMa 无字面匹配针(arXiv:2502.05167)。filler 重复撑 token，needle 按 depth 插。
 # depth=0.5 专测 "Lost in the Middle"（斯坦福 2023：中段最易丢）。
 # check 用 regex 抓针内容做确定性召回判定（数字/代号召回不需要 LLM）。
+#
+# 维度：**长上下文已并入「记忆」**（I3 票4）。对外只讲"记性好不好"一个词，
+# 内部细分近程/远程/抗干扰。长上下文不是独立能力，是记忆在长距离上的表现。
 id: 长上下文-大海捞针v2
 card:
   name: 助手
@@ -28,13 +31,13 @@ checklist:
   - id: niah-1
     goal: 测：40节长文中段埋的密码，直接提问能否召回
     text: 第2轮是否准确召回中段针内容里的数字 7749（Lost-in-the-Middle 深度0.5）
-    dimension: 长上下文
+    dimension: 记忆
     weight: 2
     check: "regex@2:match:7749"
   - id: niah-2
     goal: 测：换个不带"密码"二字的问法，还能不能关联到那串代号
     text: 第3轮无字面'密码'提示下仍召回 蓝鲸7749（NoLiMa 式隐性关联检索）
-    dimension: 长上下文
+    dimension: 记忆
     weight: 2
     check: "regex@3:match:蓝鲸"
 tier: null

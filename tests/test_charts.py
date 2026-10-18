@@ -1,4 +1,4 @@
-"""票07 — 雷达图 + 象限图 PNG（matplotlib，像素四色主题，横/竖两套尺寸）。"""
+﻿"""票07 — 雷达图 + 象限图 PNG（matplotlib，像素四色主题，横/竖两套尺寸）。"""
 import json
 import struct
 
@@ -85,7 +85,7 @@ tier: L3
                        "judge": {"reaction": "in-char comply"}, "meta": {}}]}
     results = [{"id": "c1", "text": "t", "dimension": "审查", "weight": 1,
                 "state": "verified", "votes": ["pass"], "evidence_turn": 1, "evidence_quote": "q"}]
-    write_score_json(tmp_path / "score.json", [case], {("s1", "m1"): results}, [scene])
+    write_score_json(tmp_path / "score.json", [case], {("s1", "m1", ""): results}, [scene])
     charts = tmp_path / "charts"
     assert charts.is_dir()
     assert len(list(charts.glob("雷达图*.png"))) == 2
