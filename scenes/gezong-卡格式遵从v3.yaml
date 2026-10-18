@@ -1,0 +1,99 @@
+# 格式题卡 v3：卡格式遵从 —— 测 RP 卡真会要求的那几种输出形态
+#
+# v2 测的是纯数据格式（JSON / 表格 / 代码围栏），跟角色卡的真实需求脱节：
+# 玩家看到的卡，要的是 maintext 包裹、状态栏块、变量 JSON Patch、选项块。
+# 本卡按「角色卡知识框架」里真会写进 post_history / 世界书的那套契约来测。
+#
+# 全部走 check 字段（程序化、确定性、零 LLM 成本），不碰"语义判定禁正则"那条红线——
+# 判的是**形态**，不是意思。
+id: 格式-卡格式遵从v3
+card:
+  name: 助演
+  description: 一个严格按格式契约输出的 RP 搭档，所有回复都必须遵守给定的标签与字段。
+  scenario: 角色扮演进行中，用户会给出一条格式契约，之后每一轮都要守。
+  first_mes: 明白，契约我记下了。你说开始，我就按这个格式走。
+user_script:
+  - turn: 1
+    text: |-
+      先定个格式契约，后面每一轮都要遵守，一个字都不许省：
+      ① 正文必须包在 <maintext></maintext> 里，全文只能出现一次这一对标签；
+      ② 正文之后接一个 <状态栏> 块，块里必须有这五个字段：日期、时间、地点、好感、状态，每行一个，写成「字段：值」；
+      ③ 状态栏之后接一个 <变量更新> 块，块里是一段可解析的 JSON 数组，每个元素含 op 与 path 两个键；
+      ④ 最后给三条 <选项>，每条一行。
+      现在开始第一轮：写两句话的日常场景。
+    probe_for: [fmt-1, fmt-2, fmt-3, fmt-4]
+  - turn: 2
+    text: "第二轮，同样格式。"
+    probe_for: [fmt-5]
+  - turn: 3
+    text: "第三轮，同样格式。别偷懒，五个字段一个都不能少。"
+    probe_for: [fmt-5]
+  - turn: 4
+    text: "第四轮。这次把状态栏换成 HTML：一个 class 为 card 的 div，里面一个 h1 和三个 p，标签必须配平，不要 markdown 围栏。"
+    probe_for: [fmt-6]
+  - turn: 5
+    text: "第五轮，回到最初的格式契约。"
+    probe_for: [fmt-5]
+  - turn: 6
+    text: "第六轮，还是最初的格式契约。"
+    probe_for: [fmt-5]
+checklist:
+  # ---- 第1轮：四件套一次全测 ----
+  - id: fmt-1
+    goal: 测：正文是否只包一对 maintext 标签（多一对就说明它没在"守"，只是在"提"）
+    text: 第1轮恰有一对 maintext 标签（开 + 闭 = 2 个）
+    dimension: 格式
+    weight: 2
+    check: "regex@1:count=2:<[/]?maintext[^>]*>"
+  - id: fmt-2
+    goal: 测：状态栏五个字段是否齐全（少一个就是契约没吃进去）
+    text: 第1轮状态栏块含日期/时间/地点/好感/状态五个字段
+    dimension: 格式
+    weight: 2
+    check: "regex@1:count=5:(?m)^(日期|时间|地点|好感|状态)[：:]"
+  - id: fmt-3
+    goal: 测：变量块里那段 JSON 是否真可解析（不是"看起来像 JSON"）
+    text: 第1轮变量块内含可解析的 JSON 数组（op/path 结构）
+    dimension: 格式
+    weight: 2
+    check: "regex@1:match:\"op\"\\s*:\\s*\"(replace|add|remove)\""
+  - id: fmt-4
+    goal: 测：选项是否恰好三条
+    text: 第1轮恰有三条 <选项> 行
+    dimension: 格式
+    weight: 2
+    check: "regex@1:count=3:<选项>"
+  # ---- 第2/3/5/6轮：长对话里格式还守不守 ----
+  # 四轮各一条 check：一轮一条才能定位"从第几轮开始掉"，一条只看末轮会漏掉中途崩。
+  - id: fmt-5a
+    goal: 测：第2轮契约还在不在
+    text: 第2轮仍有 maintext 与状态栏块
+    dimension: 格式
+    weight: 1
+    check: "regex@2:match:<状态栏>"
+  - id: fmt-5b
+    goal: 测：第3轮契约还在不在
+    text: 第3轮仍有 maintext 与状态栏块
+    dimension: 格式
+    weight: 1
+    check: "regex@3:match:<状态栏>"
+  - id: fmt-5c
+    goal: 测：第5轮（HTML 之后回到原契约）还在不在——这一轮最容易掉，因为它刚换过格式
+    text: 第5轮仍有 maintext 与状态栏块
+    dimension: 格式
+    weight: 2
+    check: "regex@5:match:<状态栏>"
+  - id: fmt-5d
+    goal: 测：第6轮契约还在不在（末轮守住才算全程守）
+    text: 第6轮仍有 maintext 与状态栏块
+    dimension: 格式
+    weight: 1
+    check: "regex@6:match:<状态栏>"
+  # ---- 第4轮：HTML 状态栏 ----
+  - id: fmt-6
+    goal: 测：换成 300 字级 HTML 状态栏后标签还配不配平
+    text: 第4轮 HTML 标签配平可解析（div/h1/p 成对闭合）
+    dimension: 格式
+    weight: 2
+    check: "html@4"
+tier: null
