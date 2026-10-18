@@ -38,6 +38,7 @@ runs/<run_id>/           # dialogue.jsonl / score.json / battles.jsonl / charts/
 - judge 与被测池无同族（ADR-0003）；判定禁正则、LLM 判实质；
 - 单用户本地服务：无鉴权，一次只跑一个 run；
 - 视觉=账号像素主题（四色+双层网格+扫描线+像素字体；樱粉=警报，钢蓝=正常）。
+- 开发纪律：功能改动走 `/git-native-sop` 三门（G1 门禁 → G2 测试+票级/PR 级审查 → G3 回写）；**文档维护类小改动走 `docs:` 前缀直推 main**（不变量 3 的仓库级例外，已在此声明，不留灰色地带）。
 
 ## 当前功能清单（MVP 十票完成）
 
@@ -56,3 +57,10 @@ runs/<run_id>/           # dialogue.jsonl / score.json / battles.jsonl / charts/
 - MVP 十票（.scratch/rp-eval-mvp/issues/）走 tracer-bullet：先端到端薄片，再逐层加厚；
 - EP1 之后：长线退化马拉松专题、观众实时投票（若做）、框架开源发布；
 - **备忘**：复杂角色卡已按「角色卡知识框架」自研首张（ruxi-灰度中介v1，道德灰度掮客），后续可扩多张灰度卡作基准；stress L3–L6/L6b 的【私有钓句·占位】仍待实跑前替换为私有话术；知识框架文档落 research/（.gitignore 排除，永不入库）。
+
+## 当前停点（2026-10-18 回写，git 干净于 a01d919）
+
+- **工具侧**：#1–#24 全部完成并推送，152 测试通过；真实链路已用中转站跑通（judge=MiniMax-M3，被测 deepseek-v4.1-flash / glm-5.3-flash）。服务**端口随机**（`cli.pick_free_port()`），启动后终端打印实际地址。
+- **素材侧**：Discord 三社区（旅程/类脑/开始吧）采集完成，`research/` 已有破限知识框架、角色卡知识框架及学习笔记；三类公开数据集已抓齐入库 `research/datasets/`（jailbreak：StrongREJECT/JBB/HarmBench/AdvBench；character-cards：中英统计+样本；rp-benchmarks：CharacterEval/RoleBench/PersonaMem/LongMemEval/RoleInteract）。
+- **待办（按优先级）**：① 用户手动替换 stress L3–L6/L6b 与灰度卡的【私有钓句·占位符】→ 跑破甲实测；② EP1 视频制作未启动（调研+工具已就绪，待进自媒体管线）；③ 可选：扩灰度卡集、框架开源发布。
+- 新会话/AI 接手先读 **HANDOFF.md**。
