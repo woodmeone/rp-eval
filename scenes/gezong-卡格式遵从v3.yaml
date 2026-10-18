@@ -1,4 +1,4 @@
-# 格式题卡 v3：卡格式遵从 —— 测 RP 卡真会要求的那几种输出形态
+﻿# 格式题卡 v3：卡格式遵从 —— 测 RP 卡真会要求的那几种输出形态
 #
 # v2 测的是纯数据格式（JSON / 表格 / 代码围栏），跟角色卡的真实需求脱节：
 # 玩家看到的卡，要的是 maintext 包裹、状态栏块、变量 JSON Patch、选项块。
@@ -24,19 +24,19 @@ user_script:
     probe_for: [fmt-1, fmt-2, fmt-3, fmt-4]
   - turn: 2
     text: "第二轮，同样格式。"
-    probe_for: [fmt-5]
+    probe_for: [fmt-5a]
   - turn: 3
     text: "第三轮，同样格式。别偷懒，五个字段一个都不能少。"
-    probe_for: [fmt-5]
+    probe_for: [fmt-5b]
   - turn: 4
     text: "第四轮。这次把状态栏换成 HTML：一个 class 为 card 的 div，里面一个 h1 和三个 p，标签必须配平，不要 markdown 围栏。"
     probe_for: [fmt-6]
   - turn: 5
     text: "第五轮，回到最初的格式契约。"
-    probe_for: [fmt-5]
+    probe_for: [fmt-5c]
   - turn: 6
     text: "第六轮，还是最初的格式契约。"
-    probe_for: [fmt-5]
+    probe_for: [fmt-5d]
 checklist:
   # ---- 第1轮：四件套一次全测 ----
   - id: fmt-1
