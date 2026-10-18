@@ -7,6 +7,8 @@ from pathlib import Path
 from typing import Any
 
 from rpeval.config import Scene
+from rpeval.web import labels
+from rpeval.web.labels import metric_label, metric_value, reaction_label, reaction_tone
 
 
 def list_runs(root: Path) -> list[str]:
@@ -86,10 +88,7 @@ def render_run_list(runs: list[str]) -> str:
 """
 
 
-_BADGE_CLASS = {  # 六类反应 → 配色类（樱粉=警报，钢蓝=正常）
-    "in-char comply": "steel", "in-char refuse": "steel", "soft deflect": "steel",
-    "OOC refuse": "sakura", "break": "sakura", "harmful comply": "sakura",
-}
+_BADGE_CLASS = {r: reaction_tone(r) for r in labels.REACTIONS}
 
 
 def render_view(detail: dict[str, Any]) -> str:
@@ -166,12 +165,13 @@ def render_view(detail: dict[str, Any]) -> str:
         rows = []
         for name, dv in sorted(dims.items(), key=lambda kv: -kv[1].get("score", 0)):
             det = dv.get("details", {})
-            if isinstance(det, dict) and "OOR" in det:  # 审查阶梯：展示阶梯指标
-                def _p(v):
-                    return "—" if v is None else f"{v * 100:.0f}%"
-                jb = "" if det.get("破甲等级") is None else f" · 破甲于{det['破甲等级']}"
-                extra = (f"<span class='dm-cnt'>出戏 {_p(det.get('OOR'))} · "
-                         f"破防 {_p(det.get('BUR'))} · 底线 {_p(det.get('BSR'))}{jb}</span>")
+            if isinstance(det, dict) and any(k in det for k in labels.RATIO_METRICS):
+                # 审查阶梯：展示阶梯指标（键名走白话映射，界面不留缩写）
+                jb = ("" if det.get("破甲等级") is None
+                      else f" · {metric_label('破甲等级')} {det['破甲等级']}")
+                extra = (f"<span class='dm-cnt'>{metric_label('OOR')} {metric_value('OOR', det.get('OOR'))} · "
+                         f"{metric_label('BUR')} {metric_value('BUR', det.get('BUR'))} · "
+                         f"{metric_label('BSR')} {metric_value('BSR', det.get('BSR'))}{jb}</span>")
             elif isinstance(det, dict) and "verified" in det:
                 n_ok, n_bad = len(det.get("verified", [])), len(det.get("failed", []))
                 extra = f"<span class='dm-cnt'>{n_ok}✓ {n_bad}✗</span>"
@@ -185,7 +185,7 @@ def render_view(detail: dict[str, Any]) -> str:
                 f"<span class='dm-bar'><i class='{cls}' style='width:{pct:.0f}%'></i></span>"
                 f"<span class='dm-s {cls}'>{score}</span>{extra}</div>")
         total = c.get("total")
-        rated = "" if c.get("rated", True) else "<span class='dm-rated'>✗ 红线未守住·不给推荐</span>"
+        rated = "" if c.get("rated", True) else "<span class='dm-norec'>✗ 底线没守住·不给推荐</span>"
         return (f"<div class='dims'><div class='dims-h'>维度得分"
                 f"<span class='dims-t'>总分 {total if total is not None else '—'} / {len(dims)*10}</span>{rated}</div>"
                 f"{''.join(rows)}</div>")
@@ -196,7 +196,7 @@ def render_view(detail: dict[str, Any]) -> str:
         if not v:
             return ""
         tone = v.get("tone", "mid")
-        return (f"<div class='verdict v-{tone}'>"
+        return (f"<div class='vc v-{tone}'>"
                 f"<div class='v-head'>{esc(str(v.get('headline','')))}</div>"
                 f"<div class='v-row'><span class='v-tag'>测了什么</span>{esc(str(v.get('tested','')))}</div>"
                 f"<div class='v-row'><span class='v-tag'>证明了什么</span>{esc(str(v.get('proves','')))}</div>"
@@ -205,15 +205,15 @@ def render_view(detail: dict[str, Any]) -> str:
     def turn_block(c: dict[str, Any]) -> str:
         parts = [verdict_block(c), dims_block(c)]
         if c.get("tier"):
-            col = f" · 崩档点 {esc(str(c['collapse']))}" if c.get("collapse") else ""
-            jb = f" · 破甲于 {esc(str(c['jb_level']))}" if c.get("jb_level") else ""
+            col = f" · {metric_label('崩档点')} {esc(str(c['collapse']))}" if c.get("collapse") else ""
+            jb = f" · {metric_label('破甲等级')} {esc(str(c['jb_level']))}" if c.get("jb_level") else ""
             parts.append(f"<div class='tier-tag'>压力档 {esc(c['tier'])}{col}{jb}</div>")
         for t in c["turns"]:
             j = t.get("judge") or {}
             r = j.get("reaction")
             badge = ""
             if r:
-                badge = f"<span class='badge {_BADGE_CLASS.get(r, 'steel')}'>{esc(r)}</span>"
+                badge = f"<span class='badge {reaction_tone(r)}'>{esc(reaction_label(r))}</span>"
             quote = j.get("reaction_evidence") or j.get("evidence_quote") or ""
             hl = f"<span class='hl'>{esc(str(quote))}</span>" if quote else ""
             reply = str(t.get("model_reply", ""))
@@ -222,7 +222,7 @@ def render_view(detail: dict[str, Any]) -> str:
                 f"<div class='turn'><div class='u'>用户：{esc(str(t.get('user','')))}</div>"
                 f"<div class='m'>模型：<span class='rpl{long_cls}'>{esc(reply)}</span>{badge}{hl}</div></div>")
         if c.get("checklist"):
-            parts.append("<div class='cl'><h3>checklist 取证 · 测了什么 → 证明了什么"
+            parts.append("<div class='cl'><h3>检查项取证 · 测了什么 → 证明了什么"
                          "<label class='cl-only'><input type='checkbox' class='cl-toggle'> 只看问题项</label></h3>")
             for cid, item in c["checklist"].items():
                 st = item.get("state")
@@ -270,12 +270,12 @@ def render_view(detail: dict[str, Any]) -> str:
 .cl-what {{ margin-top:2px; }} .cl-tag {{ display:inline-block; width:16px; text-align:center; margin-right:6px; font-size:9px; color:var(--ink); background:var(--steel); }}
 .cl-what .cl-tag + * {{ color:rgba(251,253,253,.8); }}
 .cl-turn {{ color:var(--steel); margin-right:6px; }} .cl-quote {{ color:rgba(251,253,253,.65); }}
-.verdict {{ border:2px solid var(--steel); padding:10px 12px; margin-bottom:12px; background:rgba(186,194,247,.07); }}
-.verdict.v-ok {{ border-color:var(--steel); background:rgba(186,194,247,.10); }}
-.verdict.v-mid {{ border-color:#e8c46f; background:rgba(232,196,111,.08); }}
-.verdict.v-bad {{ border-color:var(--sakura); background:rgba(232,160,191,.10); }}
+.vc {{ border:2px solid var(--steel); padding:10px 12px; margin-bottom:12px; background:rgba(186,194,247,.07); }}
+.vc.v-ok {{ border-color:var(--steel); background:rgba(186,194,247,.10); }}
+.vc.v-mid {{ border-color:#e8c46f; background:rgba(232,196,111,.08); }}
+.vc.v-bad {{ border-color:var(--sakura); background:rgba(232,160,191,.10); }}
 .v-head {{ font-size:13px; letter-spacing:1px; margin-bottom:6px; color:var(--paper); }}
-.verdict.v-bad .v-head {{ color:var(--sakura); }} .verdict.v-ok .v-head {{ color:var(--steel); }} .verdict.v-mid .v-head {{ color:#e8c46f; }}
+.vc.v-bad .v-head {{ color:var(--sakura); }} .vc.v-ok .v-head {{ color:var(--steel); }} .vc.v-mid .v-head {{ color:#e8c46f; }}
 .v-row {{ font-size:10px; line-height:1.8; color:rgba(251,253,253,.75); }}
 .v-tag {{ display:inline-block; width:56px; text-align:center; margin-right:8px; font-size:9px; color:var(--ink); background:var(--steel); }}
 .v-dot {{ display:inline-block; width:8px; height:8px; margin-left:6px; background:#e8c46f; }}
@@ -283,7 +283,7 @@ def render_view(detail: dict[str, Any]) -> str:
 .dims {{ border:2px solid var(--steel); padding:10px 12px; margin-bottom:14px; background:rgba(186,194,247,.06); }}
 .dims-h {{ font-size:11px; color:var(--steel); letter-spacing:2px; margin-bottom:8px; }}
 .dims-t {{ margin-left:12px; color:var(--paper); }}
-.dm-rated {{ margin-left:12px; color:var(--sakura); }}
+.dm-norec {{ margin-left:12px; color:var(--sakura); }}
 .dm {{ display:flex; align-items:center; gap:8px; font-size:10px; margin:4px 0; }}
 .dm-n {{ width:64px; color:var(--paper); flex:none; }}
 .dm-bar {{ flex:1; height:8px; background:rgba(251,253,253,.08); position:relative; }}
@@ -367,7 +367,7 @@ document.querySelectorAll('.turn .rpl.long').forEach(el=>{{
   el.title='点击展开/收起';
   el.addEventListener('click',()=>el.classList.toggle('expanded'));
 }});
-// checklist 只看问题项：勾选后隐藏 verified 行
+// 只看问题项：勾选后隐藏通过行
 document.querySelectorAll('.cl-toggle').forEach(cb=>cb.addEventListener('change',()=>{{
   const cl=cb.closest('.cl');
   cl.querySelectorAll('.cl-row').forEach(r=>{{

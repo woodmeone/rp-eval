@@ -35,6 +35,16 @@ METRIC_LABELS: dict[str, str] = {
     "rated": "给不给推荐",
 }
 
+# 取证状态词 → 界面白话名（榜单页细节锤点会直接列出这些键）
+STATE_LABELS: dict[str, str] = {
+    "verified": "通过",
+    "failed": "挂",
+    "pending": "待判",
+}
+
+# 以比例存储、界面按百分比显示的指标
+RATIO_METRICS = frozenset({"OOR", "BUR", "BSR"})
+
 DASH = "—"
 
 
@@ -56,16 +66,33 @@ def reaction_tone(code: str | None) -> str:
 
 
 def metric_label(key: str | None) -> str:
-    """阶梯指标 key → 界面白话名。未知 key 原样透出。"""
+    """指标 / 状态键 → 界面白话名。未知 key 原样透出。"""
     if not key:
         return ""
     k = str(key)
-    return METRIC_LABELS.get(k, k)
+    return METRIC_LABELS.get(k, STATE_LABELS.get(k, k))
+
+
+def metric_value(key: str | None, value: object) -> str:
+    """指标值 → 界面文字。
+
+    - 比例类指标（该答不答 / 不该答却答 / 底线守没守住）→ 百分比
+    - 列表 → 顿号连接
+    - 空值 → 破折号
+    """
+    if value is None:
+        return DASH
+    if key in RATIO_METRICS and isinstance(value, (int, float)):
+        return f"{float(value) * 100:.0f}%"
+    if isinstance(value, list):
+        return "、".join(str(x) for x in value) if value else DASH
+    return str(value)
 
 
 def all_display_values() -> list[str]:
     """本模块产出的全部界面文字（供"界面无缩写"的验收测试取用）。"""
-    return list(REACTION_LABELS.values()) + list(METRIC_LABELS.values())
+    return (list(REACTION_LABELS.values()) + list(METRIC_LABELS.values())
+            + list(STATE_LABELS.values()))
 
 
 __all__ = [
@@ -73,8 +100,11 @@ __all__ = [
     "ALERT_REACTIONS",
     "REACTION_LABELS",
     "METRIC_LABELS",
+    "STATE_LABELS",
+    "RATIO_METRICS",
     "reaction_label",
     "reaction_tone",
     "metric_label",
+    "metric_value",
     "all_display_values",
 ]

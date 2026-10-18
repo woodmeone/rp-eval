@@ -302,7 +302,7 @@ function addCard(c) {{
   const alert = ALERT.has(c.reaction);
   div.className = "card " + (alert ? "sakura" : "steel");
   div.innerHTML = `<span class="tag">第${{c.turn_no}}轮 · ${{c.model}}</span>`
-    + `<span class="badge">${{c.reaction || "—"}}</span>`
+    + `<span class="badge">${{c.reaction_label || "—"}}</span>`
     + `<span>${{c.evidence || ""}}</span>`;
   stream.prepend(div);
 }}
@@ -338,8 +338,32 @@ go.addEventListener("click", async () => {{
 def render_leaderboard(data: dict) -> str:
     """榜单页：总分排名表（rated=false 标"不予推荐评级"）→ 每维得分条 → 细节锤点 → 图表内嵌 → Elo+胜率矩阵。"""
     import html as _h
-    import json
+    from rpeval.web.labels import metric_label, metric_value
     esc = _h.escape
+
+    def details_html(det: object) -> str:
+        """细节锤点 → 白话键值对。
+
+        形状由 `leaderboard.build_leaderboard` 决定：**list[dict]**（同模型同维多个 case），
+        因此这里两种形状都吃——不假设调用方永远只给 dict。
+        原先直接 `json.dumps` 原文，键名就是 OOR/BUR/BSR/verified 这些缩写（I1）；
+        现在键走 `metric_label`、值走 `metric_value`（比例转百分比、列表转顿号）。
+        """
+        blocks = det if isinstance(det, list) else [det]
+        out = []
+        for b in blocks:
+            if not isinstance(b, dict):
+                continue
+            rows = []
+            for k, v in b.items():
+                if isinstance(v, list) and not v:
+                    continue
+                rows.append(f"<div class='hm-row'><b>{esc(metric_label(k))}</b>"
+                            f"<span>{esc(metric_value(k, v))}</span></div>")
+            if rows:
+                out.append(f"<div class='hm'>{''.join(rows)}</div>")
+        return "".join(out) if out else "<div class='hm'>—</div>"
+
     rows = []
     all_v = data.get("verdicts", {})
     _worst = {"bad": 2, "mid": 1, "ok": 0}
@@ -351,7 +375,7 @@ def render_leaderboard(data: dict) -> str:
             for d, v in sorted(m.get("dimensions", {}).items()))
         hammers = data.get("hammers", {}).get(m["model"], {})
         hammer_html = "".join(
-            f"<details><summary>{esc(dim)} 锤点</summary><pre>{esc(json.dumps(hs, ensure_ascii=False))}</pre></details>"
+            f"<details><summary>{esc(dim)} 锤点</summary>{details_html(hs)}</details>"
             for dim, hs in hammers.items()) if hammers else ""
         vs = all_v.get(m["model"], [])
         if vs:
@@ -421,6 +445,10 @@ th, td {{ border:1px solid rgba(186,194,247,.3); padding:8px; text-align:left; v
 .v-dot.ok {{ background:var(--steel); }} .v-dot.bad {{ background:var(--sakura); }}
 img {{ max-width:48%; border:2px solid var(--steel); margin:8px 0; }}
 details pre {{ color:#8a90b8; font-size:9px; }}
+.hm {{ display:flex; flex-direction:column; gap:2px; }}
+.hm-row {{ display:flex; gap:6px; font-size:9px; line-height:1.7; }}
+.hm-row b {{ color:var(--steel); min-width:5.5em; font-weight:normal; }}
+.hm-row span {{ color:rgba(251,253,253,.75); }}
 .empty {{ text-align:center; padding:60px 20px; font-size:11px; line-height:2.2; color:rgba(251,253,253,.7); }}
 </style></head><body>
 {render_nav("/leaderboard")}
